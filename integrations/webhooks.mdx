@@ -1,0 +1,211 @@
+---
+title: "Receive Penpot Events via Webhooks"
+sidebarTitle: "Webhooks"
+description: "Configure outbound webhooks to receive real-time POST notifications when files, projects, and comments change inside a Penpot team."
+---
+
+Penpot webhooks let your services react to design activity in real time. Whenever a qualifying event occurs inside a team — a file is created, a comment is posted, a project is renamed — Penpot sends an HTTP POST request to a URL you register. You can use this to sync assets, trigger CI pipelines, post Slack notifications, or build any other DesignOps or GitOps workflow.
+
+## How webhooks work in Penpot
+
+Webhooks are scoped to a **team**. Any active webhook registered for a team fires when a matching event occurs anywhere inside that team (across all projects and files). Penpot automatically retries delivery up to three times on failure and disables the webhook if it exceeds the maximum consecutive error count.
+
+<Info>
+  All RPC commands in the Penpot backend that carry the `::webhooks/event? true` metadata annotation will trigger a webhook event. The payload closely mirrors the RPC command parameters.
+</Info>
+
+## Configure a webhook
+
+Webhooks are managed from **Team Settings → Webhooks**.
+
+<Steps>
+  <Step title="Open Team Settings">
+    In Penpot, click the team name in the left sidebar, then choose **Team Settings**. Select the **Webhooks** section.
+  </Step>
+  <Step title="Add a new webhook">
+    Click **Add webhook**. Fill in the form:
+    - **URL** — The HTTPS endpoint on your server that will receive POST requests. Penpot sends a `HEAD` request to validate the URL is reachable before saving.
+    - **Payload format** — Choose between `application/json` (standard, accepted everywhere) or `application/transit+json` ([Transit](https://github.com/cognitect/transit-format), which enriches the payload with semantic type information).
+    - **Active** — Toggle to enable or disable delivery without deleting the webhook.
+  </Step>
+  <Step title="Save and verify">
+    Click **Save**. To inspect real payloads during development, set your URL to a temporary endpoint from [Webhook.site](https://webhook.site/), trigger an event in Penpot, and inspect the raw POST body.
+  </Step>
+</Steps>
+
+<Note>
+  Each team is limited to **8 webhooks**. A webhook is automatically deactivated after 3 consecutive delivery failures. You can re-enable it from Team Settings once the endpoint is healthy.
+</Note>
+
+## Payload format
+
+Penpot sends a `POST` request with the selected `Content-Type` header. The `User-Agent` header identifies the Penpot version (e.g. `penpot/2.x`). Delivery timeout is **4 seconds**.
+
+### JSON payload example
+
+The JSON keys use **camelCase** (converted from Penpot's internal kebab-case). Here is a representative `file-created` payload:
+
+```json
+{
+  "name": "file-created",
+  "profileId": "b7a2c1d4-0e3f-4a6b-9c8d-1e2f3a4b5c6d",
+  "fileId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "projectId": "d4e5f6a7-b8c9-0123-def0-123456789abc",
+  "teamId": "f1e2d3c4-b5a6-7890-fedc-ba9876543210",
+  "createdAt": "2024-06-15T10:23:45.123Z",
+  "name": "Homepage Redesign"
+}
+```
+
+<Tip>
+  If you select **Transit** format, the payload is encoded as `application/transit+json`. This format preserves Clojure/ClojureScript data types (UUIDs, instants, keywords) and reduces ambiguity in downstream processing.
+</Tip>
+
+## Webhook events
+
+Every backend RPC command annotated with `::webhooks/event? true` triggers a webhook. The table below lists all events currently fired.
+
+<Accordion title="File events">
+  | Event name | Triggered when |
+  |---|---|
+  | `file-created` | A new file is created in a project |
+  | `file-updated` | File data is modified (shapes, pages, etc.) |
+  | `file-renamed` | A file is renamed |
+  | `file-deleted` | A file is deleted |
+  | `file-shared` | A file's shared/library status changes via `set-file-shared` |
+  | `file-library-linked` | A file is linked to a shared library |
+  | `file-library-unlinked` | A file is unlinked from a shared library |
+</Accordion>
+
+<Accordion title="Project events">
+  | Event name | Triggered when |
+  |---|---|
+  | `project-created` | A new project is created |
+  | `project-renamed` | A project is renamed |
+  | `project-pin-updated` | A project's pinned state changes |
+  | `project-deleted` | A project is deleted |
+</Accordion>
+
+<Accordion title="Comment events">
+  | Event name | Triggered when |
+  |---|---|
+  | `comment-thread-created` | A new comment thread is opened on a file |
+  | `comment-created` | A reply is posted inside an existing thread |
+</Accordion>
+
+## Handling a webhook in your server
+
+Your endpoint must return HTTP `200` or `204` within 4 seconds. Any other status code is treated as a delivery failure.
+
+<CodeGroup>
+
+```typescript Node.js (Express)
+import express from "express";
+
+const app = express();
+app.use(express.json());
+
+app.post("/penpot-webhook", (req, res) => {
+  const event = req.body;
+
+  console.log("Penpot event:", event.name, "| File:", event.fileId);
+
+  switch (event.name) {
+    case "file-updated":
+      // trigger your asset-sync pipeline
+      syncAssets(event.fileId, event.teamId);
+      break;
+    case "comment-thread-created":
+      // post a notification to Slack / Teams
+      notifyTeam(event.profileId, event.fileId);
+      break;
+  }
+
+  res.sendStatus(200);
+});
+
+app.listen(3000);
+```
+
+```python Python (Flask)
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route("/penpot-webhook", methods=["POST"])
+def penpot_webhook():
+    event = request.get_json()
+
+    print(f"Penpot event: {event.get('name')} | File: {event.get('fileId')}")
+
+    if event.get("name") == "file-updated":
+        sync_assets(event["fileId"], event["teamId"])
+    elif event.get("name") == "comment-thread-created":
+        notify_team(event["profileId"], event["fileId"])
+
+    return "", 200
+
+if __name__ == "__main__":
+    app.run(port=3000)
+```
+
+</CodeGroup>
+
+## Webhook management API
+
+You can also manage webhooks programmatically via the Penpot RPC API using your [access token](/integrations/access-tokens).
+
+<CodeGroup>
+
+```bash List webhooks
+curl -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  "https://design.penpot.app/api/rpc/command/get-webhooks?team_id=YOUR_TEAM_ID"
+```
+
+```bash Create a webhook
+curl -X POST \
+  -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "team_id": "YOUR_TEAM_ID",
+    "uri": "https://your-server.example.com/penpot-webhook",
+    "mtype": "application/json"
+  }' \
+  "https://design.penpot.app/api/rpc/command/create-webhook"
+```
+
+```bash Delete a webhook
+curl -X POST \
+  -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id": "WEBHOOK_ID"}' \
+  "https://design.penpot.app/api/rpc/command/delete-webhook"
+```
+
+</CodeGroup>
+
+### Webhook RPC parameters
+
+<ParamField body="team_id" type="uuid" required>
+  The UUID of the team to register the webhook for.
+</ParamField>
+
+<ParamField body="uri" type="uri" required>
+  The fully-qualified HTTPS URL that will receive POST requests. Penpot sends a `HEAD` request to validate the URL before saving.
+</ParamField>
+
+<ParamField body="mtype" type="string" required>
+  The payload format. Accepted values: `application/json` or `application/transit+json`.
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Whether the webhook is active. Defaults to `true` on creation. Use `update-webhook` to toggle.
+</ParamField>
+
+## Error tracking
+
+Penpot tracks delivery failures per webhook. Each failed attempt increments an internal `error_count`. Once the count reaches the configured maximum (default 3), the webhook is automatically set to inactive and will stop receiving events until you reactivate it from Team Settings.
+
+<Warning>
+  A webhook URL that consistently returns non-`200`/`204` responses, times out, or is unreachable will be automatically disabled. Always monitor your endpoint health.
+</Warning>

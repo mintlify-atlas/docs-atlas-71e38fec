@@ -1,0 +1,438 @@
+---
+title: "Penpot Plugin API: Listening to Workspace Events"
+sidebarTitle: "Events API"
+description: "Subscribe to Penpot workspace events — page changes, selection updates, theme switches, file saves, and more — with penpot.on() and penpot.off()."
+---
+
+Penpot plugins can react to workspace activity in real time by subscribing to events. The event system is built on two methods available on the global `penpot` object: `penpot.on()` to subscribe and `penpot.off()` to unsubscribe. Subscribing to events requires the `content:read` permission.
+
+---
+
+## `penpot.on(type, callback, props?)`
+
+Registers an event listener and returns a unique `symbol` identifier that you can later pass to `penpot.off()`.
+
+<ParamField body="type" type="keyof EventsMap" required>
+  The event name to listen for. See the [Available events](#available-events) section for the full list.
+</ParamField>
+
+<ParamField body="callback" type="(event: EventsMap[T]) => void" required>
+  Called every time the event fires. The argument type depends on the event — see each event's entry below.
+</ParamField>
+
+<ParamField body="props" type="{ [key: string]: unknown }">
+  Extra configuration for event-specific options. Currently only used by the `shapechange` event to specify `{ shapeId: '<id>' }`.
+</ParamField>
+
+<ResponseField name="returns" type="symbol">
+  A listener ID. Store this and pass it to `penpot.off()` when you want to unsubscribe.
+</ResponseField>
+
+```ts
+const listenerId = penpot.on('selectionchange', (ids: string[]) => {
+  console.log('New selection:', ids);
+});
+```
+
+---
+
+## `penpot.off(listenerId)`
+
+Removes a previously registered event listener. It is important to call this when your plugin shuts down to avoid memory leaks.
+
+<ParamField body="listenerId" type="symbol" required>
+  The symbol returned by the corresponding `penpot.on()` call.
+</ParamField>
+
+```ts
+const id = penpot.on('contentsave', () => console.log('Saved!'));
+
+// Later — remove the listener
+penpot.off(id);
+```
+
+---
+
+## Available events
+
+The `EventsMap` interface defines every supported event and the type of its callback argument.
+
+### `pagechange`
+
+Fired when the user navigates to a different page in the same file.
+
+<ResponseField name="payload" type="Page">
+  The newly active `Page` object.
+</ResponseField>
+
+```ts
+const id = penpot.on('pagechange', (page) => {
+  console.log('Switched to page:', page.name, page.id);
+
+  // Refresh your plugin state
+  const shapes = page.findShapes({ type: 'board' });
+  penpot.ui.sendMessage({ type: 'page-update', boards: shapes.map(s => s.name) });
+});
+```
+
+---
+
+### `selectionchange`
+
+Fired when the set of selected shapes changes — including when the selection is cleared.
+
+<ResponseField name="payload" type="string[]">
+  An array of **shape IDs** (not shape objects) that are now selected. An empty array means nothing is selected.
+</ResponseField>
+
+```ts
+penpot.on('selectionchange', (ids: string[]) => {
+  if (ids.length === 0) {
+    penpot.ui.sendMessage({ type: 'selection-cleared' });
+    return;
+  }
+
+  // Resolve IDs to shape objects via the current page
+  const page = penpot.currentPage;
+  if (!page) return;
+
+  const shapes = ids
+    .map(id => page.getShapeById(id))
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
+  penpot.ui.sendMessage({
+    type: 'selection-update',
+    count: shapes.length,
+    names: shapes.map(s => s.name),
+  });
+});
+```
+
+---
+
+### `shapechange`
+
+Fired when a specific shape is mutated. You **must** pass the target shape's id in the `props` argument.
+
+<ResponseField name="payload" type="Shape">
+  The updated shape object.
+</ResponseField>
+
+<ParamField body="props.shapeId" type="string" required>
+  The id of the shape to observe.
+</ParamField>
+
+```ts
+// Watch the first selected shape for changes
+const target = penpot.selection[0];
+if (target) {
+  const id = penpot.on(
+    'shapechange',
+    (shape) => {
+      console.log('Shape updated:', shape.name, shape.x, shape.y);
+      penpot.ui.sendMessage({ type: 'shape-mutated', name: shape.name });
+    },
+    { shapeId: target.id }
+  );
+}
+```
+
+<Note>
+  Each call to `penpot.on('shapechange', …, { shapeId })` creates a separate listener. If you want to watch multiple shapes, register a listener per shape.
+</Note>
+
+---
+
+### `themechange`
+
+Fired when the user switches the Penpot UI theme (light ↔ dark).
+
+<ResponseField name="payload" type="'light' | 'dark'">
+  The new active theme.
+</ResponseField>
+
+```ts
+penpot.on('themechange', (theme) => {
+  // Forward the theme to the plugin UI so it can re-style itself
+  penpot.ui.sendMessage({ type: 'theme', value: theme });
+});
+```
+
+---
+
+### `filechange`
+
+Fired when a different file is opened in the workspace (i.e. the user navigates away from the current file).
+
+<ResponseField name="payload" type="File">
+  The newly opened `File` object.
+</ResponseField>
+
+```ts
+penpot.on('filechange', (file) => {
+  console.log('Opened file:', file.name);
+});
+```
+
+---
+
+### `contentsave`
+
+Fired **after** the file's content has been successfully saved to the backend. The callback receives no arguments.
+
+<ResponseField name="payload" type="void">
+  No payload — the callback is called with no arguments.
+</ResponseField>
+
+```ts
+penpot.on('contentsave', () => {
+  console.log('File saved at', new Date().toISOString());
+  penpot.ui.sendMessage({ type: 'saved' });
+});
+```
+
+---
+
+### `finish`
+
+Fired when the current file is closed (e.g. the user navigates away). Use this to perform final cleanup.
+
+<ResponseField name="payload" type="string">
+  The `id` of the file that was closed.
+</ResponseField>
+
+```ts
+penpot.on('finish', (fileId) => {
+  console.log('File closed:', fileId);
+  penpot.closePlugin();
+});
+```
+
+---
+
+## EventsMap summary
+
+| Event type | Callback argument | When it fires |
+|---|---|---|
+| `pagechange` | `Page` | Active page changes |
+| `selectionchange` | `string[]` (shape ids) | Canvas selection changes |
+| `shapechange` | `Shape` | A specific shape is mutated |
+| `themechange` | `'light' \| 'dark'` | UI theme changes |
+| `filechange` | `File` | A different file is opened |
+| `contentsave` | `void` | File saved to the backend |
+| `finish` | `string` (file id) | File is closed |
+
+---
+
+## Proper cleanup
+
+<Warning>
+  Always remove listeners when your plugin shuts down. Accumulating listeners across plugin re-mounts causes subtle bugs and memory leaks.
+</Warning>
+
+The recommended pattern is to collect all listener IDs in an array and clean them up in response to the `finish` event or when the user closes the panel:
+
+```ts
+// plugin.ts
+
+penpot.ui.open('Dashboard', 'index.html', { width: 360, height: 560 });
+
+// Collect all listener IDs
+const listeners: symbol[] = [];
+
+listeners.push(
+  penpot.on('selectionchange', (ids) => {
+    penpot.ui.sendMessage({ type: 'selection', ids });
+  })
+);
+
+listeners.push(
+  penpot.on('pagechange', (page) => {
+    penpot.ui.sendMessage({ type: 'page', name: page.name });
+  })
+);
+
+listeners.push(
+  penpot.on('themechange', (theme) => {
+    penpot.ui.sendMessage({ type: 'theme', value: theme });
+  })
+);
+
+// Remove all listeners when done
+const teardown = () => {
+  listeners.forEach(id => penpot.off(id));
+};
+
+// Triggered when the file closes
+listeners.push(
+  penpot.on('finish', () => {
+    teardown();
+    penpot.closePlugin();
+  })
+);
+
+// Triggered when the user clicks close in the UI
+penpot.ui.onMessage<{ type: string }>((msg) => {
+  if (msg.type === 'close') {
+    teardown();
+    penpot.closePlugin();
+  }
+});
+```
+
+---
+
+## Reacting to selection changes — full example
+
+This example builds a plugin that shows a live property inspector for the currently selected shapes:
+
+<CodeGroup>
+```ts plugin.ts
+penpot.ui.open('Inspector', 'index.html', { width: 300, height: 500 });
+
+const ids: symbol[] = [];
+
+// Helper to push the current state to the UI
+const pushState = () => {
+  const page = penpot.currentPage;
+  const shapes = penpot.selection;
+
+  penpot.ui.sendMessage({
+    type: 'state',
+    theme: penpot.theme,
+    page: page ? { id: page.id, name: page.name } : null,
+    shapes: shapes.map(s => ({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      x: s.x,
+      y: s.y,
+      width: s.width,
+      height: s.height,
+      opacity: s.opacity,
+    })),
+  });
+};
+
+// Send initial state as soon as the UI loads
+pushState();
+
+ids.push(penpot.on('selectionchange', () => pushState()));
+ids.push(penpot.on('pagechange',      () => pushState()));
+ids.push(penpot.on('themechange',     () => pushState()));
+
+ids.push(
+  penpot.on('finish', () => {
+    ids.forEach(id => penpot.off(id));
+    penpot.closePlugin();
+  })
+);
+
+penpot.ui.onMessage<{ type: string; shapeId: string; name: string }>((msg) => {
+  if (msg.type === 'rename') {
+    const shape = penpot.currentPage?.getShapeById(msg.shapeId);
+    if (shape) {
+      shape.name = msg.name;
+      pushState();
+    }
+  }
+  if (msg.type === 'close') {
+    ids.forEach(id => penpot.off(id));
+    penpot.closePlugin();
+  }
+});
+```
+
+```html index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Inspector</title>
+</head>
+<body>
+  <div id="root">Loading…</div>
+
+  <script>
+    window.addEventListener('message', ({ data: msg }) => {
+      if (msg.type !== 'state') return;
+
+      document.body.dataset.theme = msg.theme;
+
+      const root = document.getElementById('root');
+      if (!msg.shapes.length) {
+        root.innerHTML = '<p>No shapes selected.</p>';
+        return;
+      }
+
+      root.innerHTML = msg.shapes.map(s => `
+        <div class="shape-row">
+          <strong>${s.type}</strong>
+          <input
+            data-id="${s.id}"
+            class="name-input"
+            value="${s.name}"
+          />
+          <span>${Math.round(s.width)} × ${Math.round(s.height)}</span>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.name-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          window.parent.postMessage({
+            type: 'rename',
+            shapeId: e.target.dataset.id,
+            name: e.target.value,
+          }, '*');
+        });
+      });
+    });
+  </script>
+</body>
+</html>
+```
+</CodeGroup>
+
+---
+
+## Watching a single shape for mutations
+
+```ts
+// Watch a shape and stop watching if it is deleted
+let shapeWatcher: symbol | null = null;
+
+const watchShape = (shapeId: string) => {
+  // Clean up any previous watcher
+  if (shapeWatcher) {
+    penpot.off(shapeWatcher);
+  }
+
+  shapeWatcher = penpot.on(
+    'shapechange',
+    (shape) => {
+      penpot.ui.sendMessage({
+        type: 'shape-updated',
+        id: shape.id,
+        name: shape.name,
+        x: shape.x,
+        y: shape.y,
+      });
+    },
+    { shapeId }
+  );
+};
+
+// Start watching the first selected shape
+const first = penpot.selection[0];
+if (first) watchShape(first.id);
+
+// Switch to watching whenever the selection changes
+penpot.on('selectionchange', (ids) => {
+  if (ids.length > 0) {
+    watchShape(ids[0]);
+  } else if (shapeWatcher) {
+    penpot.off(shapeWatcher);
+    shapeWatcher = null;
+  }
+});
+```

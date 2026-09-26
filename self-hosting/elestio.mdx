@@ -1,0 +1,98 @@
+---
+title: "Deploy Penpot on Elestio"
+sidebarTitle: "Elestio"
+description: "Deploy a fully managed, self-hosted Penpot instance on Elestio in under 3 minutes. DNS, SSL, SMTP, backups, and upgrades are all handled for you."
+---
+
+[Elestio](https://elest.io/open-source/penpot) is a fully managed platform for self-hosted open-source software. Deploying Penpot through Elestio gives you a dedicated instance on infrastructure you choose — without having to configure DNS, provision SSL certificates, set up SMTP, manage OS updates, or handle Penpot version upgrades yourself. The entire setup takes about three minutes.
+
+<Tip>
+  Elestio is the recommended option if you want the data-ownership benefits of self-hosting but don't want to manage the operational details yourself.
+</Tip>
+
+## Step 1: Create an Elestio Account
+
+<Note>
+  Skip this section if you already have an Elestio account.
+</Note>
+
+[Click here to create your Elestio account](https://dash.elest.io/deploy?soft=Penpot&id=121). During sign-up you can choose to deploy on one of five leading cloud providers (AWS, GCP, Azure, DigitalOcean, Hetzner) or use your own on-premise hardware.
+
+## Step 2: Deploy Penpot
+
+<Steps>
+  <Step title="Create a new service">
+    In the Elestio dashboard, navigate to **Services** and click **Create Service**.
+  </Step>
+  <Step title="Find Penpot">
+    Search for **Penpot** in the software catalogue and select it.
+  </Step>
+  <Step title="Choose cloud provider and region">
+    Select the cloud provider and the region closest to your users.
+  </Step>
+  <Step title="Select a service plan">
+    Pick a plan with enough resources for your team. For a team of up to 20 users, the **2 GB RAM** plan is sufficient. Add capacity for larger teams.
+  </Step>
+  <Step title="Choose Elestio support level">
+    Select the support tier that matches your organization's needs.
+  </Step>
+  <Step title="Name your service">
+    Provide a **Service Name** — this appears in the URL of your instance — and an **Admin email** used to create the initial admin account.
+  </Step>
+  <Step title="Review advanced configuration (optional)">
+    You can set advanced configuration options now or adjust them later from the service dashboard.
+  </Step>
+  <Step title="Create the service">
+    Click **Create Service** in the bottom right. The instance launches in a couple of minutes. When the status shows **Service is running**, you're ready.
+  </Step>
+</Steps>
+
+## Step 3: Access Your Instance
+
+Once the service is running:
+
+1. Click on the service to open its detail page.
+2. Under **Network / CNAME**, find the URL of your instance.
+3. Copy and paste the URL into your browser — you'll land on the Penpot login screen.
+
+## Step 4: Configure Penpot on Elestio
+
+To customize your Penpot setup:
+
+1. Click **Update config** in the **Software** section of your service.
+2. You'll see the **Docker Compose** file that Elestio uses to run your instance.
+3. Switch to the **ENV** tab (top-middle-left) to edit environment variables.
+4. Lines starting with `#` are comments and are inactive — delete the `#` to activate a configuration option.
+5. After making all your changes, click **Update & restart**. Changes take effect after a couple of minutes.
+
+<Info>
+  All configuration variables available for self-hosted Penpot also apply here. See the [Configuration guide](/self-hosting/configuration) for a full reference of flags, auth providers, SMTP, and storage options.
+</Info>
+
+For assistance, contact the Penpot team at [support@penpot.app](mailto:support@penpot.app).
+
+## Updates
+
+Elestio updates your Penpot instance automatically when new releases are published. If you prefer to control the upgrade timing:
+
+1. Go to your service's **Software** section.
+2. Click **Disable auto updates** under **Software auto updates**.
+
+You can then trigger updates manually at a time that suits your team.
+
+## What Elestio Manages for You
+
+<CardGroup cols={2}>
+  <Card title="DNS & SSL" icon="lock">
+    Automatic domain configuration and SSL certificate provisioning and renewal.
+  </Card>
+  <Card title="SMTP" icon="envelope">
+    Built-in email delivery so Penpot can send registration confirmations and team invitations out of the box.
+  </Card>
+  <Card title="Backups" icon="database">
+    Scheduled backups of your Penpot data with point-in-time restore capability.
+  </Card>
+  <Card title="OS & App Updates" icon="arrow-up">
+    Operating system patches and Penpot version upgrades applied automatically (unless disabled).
+  </Card>
+</CardGroup>

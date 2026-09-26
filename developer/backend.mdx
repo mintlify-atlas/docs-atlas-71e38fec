@@ -1,0 +1,237 @@
+---
+title: "Penpot Backend: Clojure Services and RPC API"
+sidebarTitle: "Backend"
+description: "Explore Penpot's Clojure backend: RPC command system, PostgreSQL persistence, Redis pub/sub, REPL-based development, database migrations, and async task workers."
+---
+
+The Penpot backend is a Clojure application running on the JVM. It handles all data persistence, file storage, RPC command dispatch, WebSocket notifications, and background maintenance tasks. Source code lives under `backend/src/app/`.
+
+## Directory Structure
+
+```text
+backend/src/app/
+├── main.clj          # Entry point; global system map
+├── config.clj        # Config vars read from environment
+├── http/             # HTTP server and route definitions
+│   └── router.clj
+├── rpc/              # RPC command dispatch and handlers
+│   └── commands/     # Individual command namespaces
+├── migrations/       # Migration orchestration (Clojure)
+│   └── sql/          # Raw SQL migration scripts
+├── tasks/            # Async background task definitions
+├── setup/            # System initialization (DB setup, initial data)
+├── srepl/            # Interactive REPL helpers (srepl.main)
+├── cli/              # Command-line maintenance commands
+└── util/             # Generic utility functions
+```
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `main.clj` | Global settings; JVM entry point |
+| `config.clj` | Declares all configuration variables pulled from environment |
+| `http.clj` | HTTP server bootstrap; wires routes |
+| `notifications.clj` | WebSocket management; subscribes clients to file topics |
+| `rpc.clj` | RPC subsystem: request decoding, dispatch, error handling |
+| `worker.clj` | Async task runner (cron-like scheduling) |
+| `metrics.clj` | Interceptors that record RPC call stats |
+| `db.clj` | PostgreSQL helpers (connection pool, query helpers) |
+| `emails.clj` | Email sending utilities |
+| `storage.clj` | S3-compatible media storage abstraction |
+| `msgbus.clj` | Redis pub/sub wrapper |
+
+## RPC Command System
+
+Every data operation in Penpot is exposed as an RPC command. There are no REST endpoints — just a flat command space.
+
+### How a call travels end-to-end
+
+1. **Frontend** calls `app.main.repo/cmd!` with a command name (e.g. `:get-file`) and a params map.
+2. Params are **transit-encoded** and sent as an HTTP POST to `/api/rpc/command/get-file`.
+3. The `rpc.clj` module decodes params and looks up the matching handler by name.
+4. The handler is a plain Clojure function annotated with a Malli schema for params validation.
+5. The return value is transit-encoded and returned to the frontend.
+
+### Defining a command
+
+```clojure
+;; backend/src/app/rpc/commands/files.clj
+
+(sm/defn get-file
+  {::sm/params [:map
+                [:id ::sm/uuid]
+                [:features {:optional true} [:set :string]]]}
+  [{:keys [pool] :as cfg} {:keys [profile-id id] :as params}]
+  (db/with-atomic [conn pool]
+    (let [file (db/get conn :file {:id id})]
+      (check-read-permissions! conn profile-id id)
+      (decode-file file))))
+```
+
+Commands live under `app.rpc.commands.*`. The `sm/defn` macro registers the function with its param schema and wires it into the HTTP router.
+
+### Queries vs mutations
+
+Historically the API distinguished `query` (GET) and `mutation` (POST) endpoints. The current implementation routes everything through `/api/rpc/command/`, but the distinction still appears in some older code paths.
+
+## WebSocket and PubSub
+
+When a user opens a file, the frontend opens a WebSocket to `/ws/notifications?file-id=<uuid>`.
+
+```
+Frontend ──── WebSocket ──── Backend notifications.clj
+                                   │
+                                  Redis
+                                   │
+                        All other backend instances
+```
+
+`notifications.clj` subscribes the connection to a Redis pub/sub topic named after the file ID. When any backend instance receives a change RPC call for that file, it publishes the change to Redis, which fans it out to all subscribers — including clients connected to different backend instances.
+
+## Database: PostgreSQL
+
+The backend uses PostgreSQL exclusively. All queries are written as plain SQL strings in `db.clj` wrappers — there is no ORM.
+
+### Soft deletion
+
+No row is deleted immediately. Every deletion sets a `deleted_at` timestamp. All query helpers add `AND deleted_at IS NULL` automatically. The garbage-collector task permanently removes rows where `deleted_at` is older than the configured threshold.
+
+### Migrations
+
+SQL migrations live in `backend/src/app/migrations/sql/` and follow a strict naming convention:
+
+```
+NNNN-<verb>-<table-name>-<description>
+```
+
+Examples:
+
+```
+0025-del-generic-tokens-table
+0026-mod-profile-table-add-is-active-field
+```
+
+<Tip>
+Use `-` as a word separator throughout — even if the table name has multiple words. Do not mix camelCase or underscores in migration filenames.
+</Tip>
+
+Migrations run automatically on startup (handled by `setup/`). To inspect the full current schema:
+
+```bash
+# Inside the devenv container
+pg_dump -h postgres -s > schema.sql
+```
+
+### Running new migrations in development
+
+1. Create the SQL file in `backend/src/app/migrations/sql/`.
+2. Restart the backend (`(restart)` in the REPL, or `Ctrl+C` then `./scripts/start-dev`).
+3. The migration runs automatically on boot.
+
+## REPL-Based Development Workflow
+
+The backend is built for interactive development through a Clojure REPL.
+
+<Steps>
+  <Step title="Open the REPL">
+    From tmux window 4 (or any shell inside the devenv), stop the running backend and start the REPL:
+
+    ```bash
+    ./scripts/repl
+    ```
+
+    This starts an in-process REPL with line editing and color output. The nREPL socket is also available on port `6064` for IDE integration.
+  </Step>
+  <Step title="Start the system">
+    Inside the REPL, start all subsystems (HTTP server, database pool, workers, etc.):
+
+    ```clojure
+    (start)
+    ```
+  </Step>
+  <Step title="Make code changes">
+    Edit source files in your editor. When ready, reload changed namespaces and restart:
+
+    ```clojure
+    (restart)
+    ```
+
+    If an exception occurs during reload, recover with:
+
+    ```clojure
+    (repl/refresh-all)
+    (restart)
+    ```
+  </Step>
+  <Step title="Call backend functions directly">
+    Import any namespace and call functions interactively:
+
+    ```clojure
+    (require '[app.srepl.main :as srepl])
+    (srepl/send-test-email! system "test@example.com")
+    ```
+
+    The `system` global var holds the running system map — pass it to `app.srepl.*` functions.
+  </Step>
+</Steps>
+
+### REPL helper functions
+
+| Function | Description |
+|---|---|
+| `(start)` | Start all subsystems |
+| `(stop)` | Stop all subsystems |
+| `(restart)` | Stop, reload changed namespaces, start |
+| `(repl/refresh-all)` | Force-reload all namespaces (use after an error) |
+
+### IDE nREPL connection
+
+Connect your Clojure-aware IDE to `localhost:6064`. After connecting, evaluate `(shadow/repl :main)` if you also need a ClojureScript REPL inside the same session.
+
+## Async Task Workers
+
+The `worker.clj` module runs background tasks on a cron-like schedule in JVM threads separate from the HTTP server. Example tasks:
+
+- **Garbage collector** — permanently deletes soft-deleted rows past the threshold.
+- **File data packing** — compacts per-file change history.
+- **Telemetry collector** — aggregates usage metrics.
+- **Media cleanup** — finds and removes orphaned file storage objects.
+
+Tasks are defined with `wrk/defmethod` and registered in the task table. In the multi-workspace devenv, background workers run **only on ws0**; other instances enqueue tasks into the shared PostgreSQL `task` table and ws0 claims them.
+
+## Loading Test Fixtures
+
+To populate the development database with sample users and projects:
+
+```bash
+# Option 1: Inside the REPL
+(app.cli.fixtures/run {:preset :small})
+
+# Option 2: Standalone script
+clojure -Adev -X:fn-fixtures
+```
+
+This creates users following the pattern:
+- **Email:** `profile0@example.com` … `profile5@example.com`
+- **Password:** `123123`
+
+## Linting
+
+The project uses [clj-kondo](https://github.com/clj-kondo/clj-kondo) for static analysis. Run it manually (there is no watch process):
+
+```bash
+cd penpot/backend
+clj-kondo --lint src
+```
+
+The repository includes a base clj-kondo configuration. Add custom hooks or config in `.clj-kondo/` as needed.
+
+## Running Backend Tests
+
+```bash
+cd penpot/backend
+clojure -Adev -X:test
+```
+
+Tests use `clojure.test` and interact with a real test database. The devenv PostgreSQL instance must be running.

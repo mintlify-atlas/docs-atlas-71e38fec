@@ -1,0 +1,108 @@
+---
+title: "Penpot: Open-Source Design Platform for Product Teams"
+sidebarTitle: "Introduction"
+description: "Penpot is the open-source, self-hostable design platform built on open standards. Full ownership, real-time collaboration, design tokens, and AI workflows."
+---
+
+Penpot is the open-source design platform for teams that build digital products at scale. Unlike proprietary design tools, Penpot is built on open web standards — SVG, CSS, HTML, and JSON — meaning designs are always readable by developers and AI systems alike. Whether you choose the hosted cloud version at [design.penpot.app](https://design.penpot.app) or deploy it on your own infrastructure, the experience is identical and you retain complete ownership of your design data.
+
+## Why Penpot
+
+Penpot's core strength is giving teams **full ownership of their design infrastructure**. It was built from the ground up to be self-hostable, to work with open standards, and to close the gap between design and engineering. Here are the key differentiators:
+
+<CardGroup cols={2}>
+  <Card title="Open Standards" icon="code">
+    All designs are expressed in SVG, CSS, and JSON. No proprietary formats — your assets are readable by humans, developers, and AI tools.
+  </Card>
+  <Card title="Self-Hostable" icon="server">
+    Deploy on your own servers with Docker, Kubernetes, or Elestio. You control the data, compliance, and upgrade cycle.
+  </Card>
+  <Card title="Native Design Tokens" icon="palette">
+    A single source of truth between design and development. Design tokens ensure consistency across projects and platforms.
+  </Card>
+  <Card title="Plugin System" icon="puzzle-piece">
+    Extend Penpot with community plugins or build your own. Automate workflows, integrate external systems, and add new capabilities.
+  </Card>
+  <Card title="MCP Server" icon="robot">
+    The Model Context Protocol server enables multi-directional workflows between design and code, powering AI-driven automation.
+  </Card>
+  <Card title="Real-Time Collaboration" icon="users">
+    Work alongside teammates simultaneously. Changes are reflected instantly — solo or team, in the browser or self-hosted.
+  </Card>
+</CardGroup>
+
+## Cloud vs. Self-Hosted
+
+Penpot is **deployment agnostic**. You can start immediately on the cloud or run it entirely on your own servers.
+
+<Tabs>
+  <Tab title="Penpot Cloud">
+    The fastest way to get started. No setup required — just sign up and start designing.
+
+    - Hosted at [design.penpot.app](https://design.penpot.app)
+    - Always on the latest version
+    - Managed infrastructure, backups, and SSL
+    - Free tier available; Enterprise plan for larger organizations
+  </Tab>
+  <Tab title="Self-Hosted">
+    Full control over your environment. Ideal for organizations with strict data governance or compliance requirements.
+
+    - Deploy with Docker Compose, Kubernetes (Helm), or Elestio
+    - Control your own upgrade cadence
+    - Integrate with your internal identity provider (LDAP, OIDC, SSO)
+    - Docker images are published shortly after cloud updates
+  </Tab>
+</Tabs>
+
+## Core Capabilities
+
+### Design Systems: Tokens, Components & Variants
+
+Penpot brings design systems to code-minded teams with native [Design Tokens](https://penpot.dev/collaboration/design-tokens), reusable Components, and Variants — all forming a single source of truth for UI consistency across projects and platforms.
+
+### CSS Grid and Flex Layout
+
+With [CSS Grid and Flex Layout](https://help.penpot.app/user-guide/designing/flexible-layouts/) support, teams design responsive interfaces that behave like real production code from day one. No guessing, no translation layer.
+
+### Inspect Mode
+
+The Inspect tab provides developers with instant access to SVG, CSS, and HTML code derived directly from the design. Ready-to-use code is always one click away.
+
+### Integrations & API
+
+Penpot offers [webhook support and an API](https://penpot.app/integrations-api) accessible via access tokens, making it easy to integrate into CI/CD pipelines, design ops workflows, and third-party tooling.
+
+## Penpot Enterprise
+
+[Penpot Enterprise](https://help.penpot.app/user-guide/account-teams/enterprise-plan/) is the paid plan for organizations that need to scale design work across multiple teams with advanced governance and security controls. Enterprise features include:
+
+- **Admin Console** — centralized team and user management
+- **SSO / Identity Provider integration** — connect your existing IdP via OIDC, SAML, or LDAP
+- **Advanced permissions** — fine-grained access control across teams and projects
+- Available for both cloud and self-hosted deployments
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get Penpot running in minutes — cloud or self-hosted with Docker.
+  </Card>
+  <Card title="Deploy with Docker" icon="docker" href="/self-hosting/docker">
+    Step-by-step guide to running Penpot with Docker Compose.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/self-hosting/configuration">
+    Environment variables, flags, auth providers, SMTP, and storage.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/self-hosting/troubleshooting">
+    Diagnose and resolve common issues with your Penpot installation.
+  </Card>
+</CardGroup>
+
+## Community & Resources
+
+Penpot is an open-source project developed by [Kaleidos](https://kaleidos.net/) and maintained by a vibrant global community. Licensed under the [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/), it is a [Verified Digital Public Good](https://www.digitalpublicgoods.net/r/penpot).
+
+- 💬 [Community Forum](https://community.penpot.app/) — ask questions, share feedback, get inspired
+- 🐛 [GitHub Issues](https://github.com/penpot/penpot/issues) — report bugs
+- 📚 [User Guide](https://help.penpot.app/user-guide/) — full product documentation
+- 🎓 [Learning Center](https://penpot.app/learning-center) — tutorials and courses

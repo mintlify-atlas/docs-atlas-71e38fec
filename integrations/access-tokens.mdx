@@ -1,0 +1,241 @@
+---
+title: "Authenticate Penpot API Calls with Access Tokens"
+sidebarTitle: "Access Tokens"
+description: "Generate personal access tokens in Penpot and use them to authenticate RPC API requests from scripts, CI pipelines, and third-party integrations."
+---
+
+Personal access tokens are the recommended way to authenticate programmatic access to the Penpot API. They work as an alternative to password-based login and let you call any RPC command that your user account can perform — from listing files to managing team members — without exposing your credentials.
+
+<Warning>
+  Treat access tokens like passwords. Anyone who holds a token can act on behalf of your account. Store tokens in environment variables or secret managers, not in source code.
+</Warning>
+
+## Generate an access token
+
+Access tokens are managed per user account, not per team or workspace.
+
+<Steps>
+  <Step title="Open Profile settings">
+    Click your avatar in the bottom-left corner of the Penpot interface, then select **Your account**.
+  </Step>
+  <Step title="Go to Access Tokens">
+    In the account panel, select the **Access Tokens** section.
+  </Step>
+  <Step title="Generate a new token">
+    Click **Generate new token**. Enter a descriptive name (e.g. `ci-pipeline-prod`) so you can identify it later.
+  </Step>
+  <Step title="Set an expiration">
+    Choose how long the token should remain valid. The available options are:
+    - **Never** — token does not expire
+    - **30 days**
+    - **60 days**
+    - **90 days**
+    - **180 days**
+  </Step>
+  <Step title="Copy the token">
+    After clicking **Create token**, the token value is shown **once**. Copy it immediately and store it in a secure location — it cannot be retrieved again.
+  </Step>
+</Steps>
+
+<Note>
+  You can delete a token at any time from the Access Tokens list. Click the menu icon (⋯) to the right of any token and select **Delete**.
+</Note>
+
+## Authenticate API requests
+
+Pass your token in the `Authorization` HTTP header using the `Token` scheme:
+
+```
+Authorization: Token <your-access-token>
+```
+
+### Quick test with curl
+
+```bash
+curl -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  https://design.penpot.app/api/rpc/command/get-profile
+```
+
+A successful response returns your Penpot profile as JSON.
+
+## The RPC API pattern
+
+All Penpot backend functionality is exposed through a single RPC endpoint:
+
+```
+POST https://<your-penpot-domain>/api/rpc/command/<command-name>
+```
+
+- **GET queries** can be issued as `GET` requests with query-string parameters.
+- **Mutations** (create, update, delete) must be `POST` requests with a JSON body.
+- Command names use **kebab-case** (e.g. `get-profile`, `create-file`).
+
+The interactive API reference is available at `https://design.penpot.app/api/_doc` and is generated directly from source code.
+
+## Key RPC commands
+
+The commands below are available to any authenticated user. Parameters shown are the most commonly used ones.
+
+<Accordion title="Profile & account">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-profile` | GET | Returns the current user's profile |
+  | `update-profile` | POST | Updates profile fields (name, email, etc.) |
+</Accordion>
+
+<Accordion title="Teams">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-teams` | GET | Lists all teams the current user belongs to |
+  | `get-team` | GET | Returns a single team (`team_id` required) |
+  | `create-team` | POST | Creates a new team (`name` required) |
+  | `update-team` | POST | Renames or updates a team |
+  | `delete-team` | POST | Deletes a team |
+  | `get-team-members` | GET | Lists members of a team |
+</Accordion>
+
+<Accordion title="Projects">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-projects` | GET | Lists all projects for a team (`team_id` required) |
+  | `get-project` | GET | Returns a single project (`id` required) |
+  | `create-project` | POST | Creates a project (`team_id`, `name` required) |
+  | `rename-project` | POST | Renames a project (`id`, `name` required) |
+  | `delete-project` | POST | Deletes a project and all its files |
+</Accordion>
+
+<Accordion title="Files">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-project-files` | GET | Lists files in a project (`project_id` required) |
+  | `get-file` | GET | Returns full file data (`id` required) |
+  | `create-file` | POST | Creates a new file (`project_id`, `name` required) |
+  | `rename-file` | POST | Renames a file (`id`, `name` required) |
+  | `delete-file` | POST | Deletes a file (`id` required) |
+  | `get-file-summary` | GET | Returns a lightweight summary of a file |
+  | `get-team-shared-files` | GET | Lists shared library files for a team |
+</Accordion>
+
+<Accordion title="Comments">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-comment-threads` | GET | Lists comment threads on a file (`file_id` required) |
+  | `create-comment-thread` | POST | Opens a new comment thread on a file |
+  | `create-comment` | POST | Adds a reply to an existing thread |
+  | `update-comment` | POST | Edits a comment's content |
+  | `delete-comment-thread` | POST | Deletes a comment thread |
+</Accordion>
+
+<Accordion title="Fonts & media">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-team-fonts` | GET | Lists custom fonts uploaded to a team |
+  | `upload-file-media-object` | POST | Uploads an image or other media to a file |
+</Accordion>
+
+<Accordion title="Webhooks">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-webhooks` | GET | Lists webhooks for a team |
+  | `create-webhook` | POST | Registers a new webhook endpoint |
+  | `update-webhook` | POST | Updates a webhook's URL, format, or active state |
+  | `delete-webhook` | POST | Removes a webhook |
+</Accordion>
+
+<Accordion title="Access tokens">
+  | Command | Method | Description |
+  |---|---|---|
+  | `get-access-tokens` | GET | Lists your access tokens (token values are not returned) |
+  | `create-access-token` | POST | Creates a new access token (`name` required) |
+  | `delete-access-token` | POST | Deletes an access token (`id` required) |
+</Accordion>
+
+## Example API calls
+
+<CodeGroup>
+
+```bash List your projects
+curl -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  "https://design.penpot.app/api/rpc/command/get-projects?team_id=YOUR_TEAM_ID"
+```
+
+```bash Create a new file
+curl -X POST \
+  -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "YOUR_PROJECT_ID",
+    "name": "Sprint 12 Components"
+  }' \
+  "https://design.penpot.app/api/rpc/command/create-file"
+```
+
+```bash List comment threads on a file
+curl -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  "https://design.penpot.app/api/rpc/command/get-comment-threads?file_id=YOUR_FILE_ID"
+```
+
+```bash Get team shared libraries
+curl -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  "https://design.penpot.app/api/rpc/command/get-team-shared-files?team_id=YOUR_TEAM_ID"
+```
+
+</CodeGroup>
+
+## Token expiry and rotation
+
+<ResponseField name="expires_at" type="datetime | null">
+  The UTC timestamp when the token expires. `null` if the token was created with **Never** expiry. Tokens past their expiry date are automatically rejected by the server.
+</ResponseField>
+
+<ResponseField name="id" type="uuid">
+  The token's internal identifier. Use this to delete the token via `delete-access-token`.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The human-readable label you assigned when creating the token.
+</ResponseField>
+
+<Tip>
+  Rotate tokens regularly for long-running integrations. Create the new token first, update your integration to use it, then delete the old one. This avoids downtime during rotation.
+</Tip>
+
+## Using tokens in CI/CD
+
+Store your token as a secret environment variable and reference it in your pipeline:
+
+<CodeGroup>
+
+```yaml GitHub Actions
+- name: Fetch Penpot file data
+  env:
+    PENPOT_TOKEN: ${{ secrets.PENPOT_ACCESS_TOKEN }}
+  run: |
+    curl -H "Authorization: Token $PENPOT_TOKEN" \
+      "https://design.penpot.app/api/rpc/command/get-file?id=$FILE_ID" \
+      -o design-file.json
+```
+
+```bash Shell script
+#!/bin/bash
+# Export PENPOT_TOKEN before running this script
+
+FILE_ID="your-file-uuid-here"
+
+curl -s \
+  -H "Authorization: Token ${PENPOT_TOKEN}" \
+  "https://design.penpot.app/api/rpc/command/get-file?id=${FILE_ID}" \
+  | jq '.name'
+```
+
+</CodeGroup>
+
+## Self-hosted instances
+
+If you are running a self-hosted Penpot instance, replace `design.penpot.app` with your own domain in all API URLs. The access token feature must be enabled in your instance configuration via the `:access-tokens` feature flag.
+
+```bash
+# Self-hosted example
+curl -H "Authorization: Token YOUR_ACCESS_TOKEN" \
+  "https://penpot.yourcompany.com/api/rpc/command/get-profile"
+```

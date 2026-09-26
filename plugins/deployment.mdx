@@ -1,0 +1,324 @@
+---
+title: "Deploy and Publish Your Penpot Plugin"
+sidebarTitle: "Deployment"
+description: "Host your Penpot plugin on any static platform, configure CORS, meet manifest requirements, and submit to PenpotHub for public discovery."
+---
+
+Penpot plugins are loaded entirely by URL — there is no central app store or approval gate required to use a plugin. Once you host your plugin's built files anywhere on the web (or even locally during development), any Penpot user can install it by pasting the manifest URL into the Plugin Manager. When you're ready for broader discovery, you can also submit your plugin to [PenpotHub](https://penpot.app/penpothub/plugins) so the whole community can find it.
+
+## How Plugin Loading Works
+
+Penpot fetches two things from your hosted URL:
+
+1. **`manifest.json`** — describes the plugin name, icon, entry-point script, and required permissions.
+2. **`plugin.js`** (or your configured code file) — the sandboxed plugin logic that runs inside Penpot.
+
+The Plugin Manager accepts any publicly reachable HTTPS URL pointing to a `manifest.json`. This means any static hosting provider works, and you can update your plugin at any time just by re-deploying — no re-installation required for existing users.
+
+<Note>
+  During local development you can use `http://localhost:<port>/assets/manifest.json`. For production, the URL **must** use HTTPS.
+</Note>
+
+## Manifest Requirements for Production
+
+Before deploying, make sure your `manifest.json` includes all required fields. Here is a complete example:
+
+```json
+{
+  "name": "My Awesome Plugin",
+  "description": "A short description shown in the Plugin Manager",
+  "code": "/assets/plugin.js",
+  "icon": "/assets/icon.png",
+  "permissions": ["content:read", "content:write"]
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | ✅ | Short; use the suffix `-plugin` by convention (e.g. `rename-layers-plugin`) |
+| `description` | ✅ | Shown in the Plugin Manager modal |
+| `code` | ✅ | Path to the compiled plugin entry point |
+| `icon` | recommended | Any square image — auto-cropped to 56 × 56 px in the UI |
+| `permissions` | ✅ | Declare only what you need (see [Plugin Overview](/plugins/overview)) |
+
+<Tip>
+  Keep the icon square at any resolution — Penpot will resize it automatically to 56 × 56 px in the Plugin Manager modal.
+</Tip>
+
+### Available Permissions
+
+Declare permissions as an array of strings in `manifest.json`. Common values:
+
+```json
+"permissions": [
+  "content:read",
+  "content:write",
+  "library:read",
+  "library:write",
+  "comment:write",
+  "user:read",
+  "allow:downloads",
+  "allow:localstorage"
+]
+```
+
+Only request permissions your plugin actually uses — this is shown to users before they install.
+
+## Building Your Project
+
+<Steps>
+  <Step title="Run the build command">
+    The exact command depends on your framework, but if you followed the starter template the standard npm script works:
+
+    ```bash
+    npm run build
+    ```
+  </Step>
+
+  <Step title="Locate the output folder">
+    Build output is typically placed in `dist/`. Some frameworks add a nested sub-folder:
+
+    | Framework | Typical output path |
+    |---|---|
+    | Vite / plain TS | `dist/` |
+    | Angular | `dist/apps/<project-name>/browser/` |
+    | Vue | `dist/` |
+    | React | `dist/` |
+
+    Make sure your `manifest.json` `code` path matches the actual output location.
+  </Step>
+</Steps>
+
+## Hosting Options
+
+All the platforms below offer **free plans** for static sites. Pick the one that fits your workflow.
+
+<Tabs>
+  <Tab title="Netlify">
+    ### CORS Configuration
+
+    Netlify requires a `_headers` file so Penpot can fetch your plugin assets cross-origin. Create it in the `public/` folder (it will be copied to the build output automatically):
+
+    ```
+    /*
+      Access-Control-Allow-Origin: *
+    ```
+
+    ### Option A — Connect to Git
+
+    <Steps>
+      <Step title="Create a Netlify account">
+        [Sign up](https://app.netlify.com/signup) with GitHub, GitLab, Bitbucket, or email.
+      </Step>
+      <Step title="Import your repository">
+        Go to [app.netlify.com/start](https://app.netlify.com/start) and connect your repository. Netlify auto-detects the framework and pre-fills build settings.
+      </Step>
+      <Step title="Deploy">
+        Confirm the build settings and click **Deploy site**. Every push to your main branch triggers a new deploy automatically.
+
+        Reference: [Netlify configure builds](https://docs.netlify.com/configure-builds/overview/)
+      </Step>
+    </Steps>
+
+    ### Option B — Drag and Drop
+
+    <Steps>
+      <Step title="Build your plugin">
+        ```bash
+        npm run build
+        ```
+      </Step>
+      <Step title="Open Netlify Drop">
+        Go to [app.netlify.com/drop](https://app.netlify.com/drop).
+      </Step>
+      <Step title="Drop your build folder">
+        Drag the **inner** build folder (e.g. `dist/` or `dist/browser/`) into the page — not the project root. Netlify will give you a live HTTPS URL immediately.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Cloudflare Pages">
+    ### CORS Configuration
+
+    Same as Netlify — add a `_headers` file to your `public/` folder:
+
+    ```
+    /*
+      Access-Control-Allow-Origin: *
+    ```
+
+    ### Option A — Connect to Git
+
+    <Steps>
+      <Step title="Create a Cloudflare account">
+        [Sign up](https://dash.cloudflare.com/sign-up) at Cloudflare.
+      </Step>
+      <Step title="Create a new Pages project">
+        Navigate to **Workers & Pages → Create → Pages → Connect to Git** and select your repository.
+      </Step>
+      <Step title="Configure build settings">
+        Set the build command (`npm run build`) and output directory (`dist` or the appropriate sub-folder for your framework).
+      </Step>
+      <Step title="Save and deploy">
+        Cloudflare builds and deploys your plugin. Future pushes redeploy automatically.
+
+        Reference: [Cloudflare Pages Git integration](https://developers.cloudflare.com/pages/get-started/git-integration/)
+      </Step>
+    </Steps>
+
+    ### Option B — Direct Upload
+
+    <Steps>
+      <Step title="Build your plugin">
+        ```bash
+        npm run build
+        ```
+      </Step>
+      <Step title="Open Direct Upload">
+        Go to **Workers & Pages → Create → Pages → Upload assets**.
+      </Step>
+      <Step title="Create a new page and upload">
+        Give your project a name, then drag and drop (or browse for) your build folder.
+
+        Reference: [Cloudflare Pages direct upload](https://developers.cloudflare.com/pages/get-started/direct-upload/)
+      </Step>
+      <Step title="Deploy site">
+        Click **Deploy site** and your plugin is live.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Surge">
+    Surge is a CLI-first platform with free HTTPS on `*.surge.sh` subdomains.
+
+    Reference: [Getting started with Surge](https://surge.sh/help/getting-started-with-surge)
+
+    ### CORS Configuration
+
+    Surge uses a plain file named `CORS` (no extension) rather than `_headers`. Place it in `public/` before building:
+
+    ```bash
+    echo '*' > public/CORS
+    ```
+
+    This allows any domain. For a restricted list, add one domain per line instead of `*`.
+    See [Enabling Cross-Origin Resource Sharing](https://surge.sh/help/enabling-cross-origin-resource-sharing).
+
+    ### Deploying
+
+    <Steps>
+      <Step title="Install Surge and log in">
+        ```bash
+        npm install --global surge
+        surge login
+        # or, to create a new account:
+        surge signup
+        ```
+      </Step>
+      <Step title="Create the CORS file and build">
+        ```bash
+        echo '*' > public/CORS
+        npm run build
+        ```
+      </Step>
+      <Step title="Run Surge">
+        ```bash
+        surge
+        ```
+
+        Surge will prompt for the build folder path and your desired domain:
+
+        ```
+        project: /home/user/my-plugin/dist/
+        domain:  https://my-penpot-plugin.surge.sh
+
+        upload: [====================] 100% eta: 0.0s (10 files, 305761 bytes)
+        CDN:    [====================] 100%
+        encryption: *.surge.sh, surge.sh (346 days)
+
+        Success! - Published to my-penpot-plugin.surge.sh
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="GitHub Pages">
+    GitHub Pages serves any repository's `gh-pages` branch (or `docs/` folder) as a static site for free.
+
+    <Steps>
+      <Step title="Configure your build output path">
+        Set your framework's `base` / `publicPath` to match the repository name sub-path if needed (e.g. `/my-plugin/` for `username.github.io/my-plugin`).
+      </Step>
+      <Step title="Add CORS headers via a custom action or _headers file">
+        GitHub Pages does not support custom response headers natively. Use a GitHub Actions workflow to deploy to a provider that does, or add a `vercel.json` / `netlify.toml` redirect if you prefer a zero-config alternative.
+      </Step>
+      <Step title="Push your build and enable Pages">
+        In your repository settings, go to **Pages** and set the source to the branch/folder containing your built files.
+      </Step>
+    </Steps>
+
+    <Warning>
+      GitHub Pages does **not** let you set custom response headers (including `Access-Control-Allow-Origin`). If Penpot raises a CORS error when loading your plugin, switch to Netlify, Cloudflare Pages, or Surge — all of which support custom headers on free plans.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## CORS and Security Considerations
+
+<Warning>
+  Penpot fetches both your `manifest.json` and `plugin.js` from the browser. If your hosting provider does not return an `Access-Control-Allow-Origin: *` header, Penpot cannot load the plugin and will show a CORS error.
+</Warning>
+
+Key points to keep in mind:
+
+- **Always use HTTPS** in production. Penpot will not load plugin assets from `http://` URLs.
+- **Serve from the same origin** or ensure CORS headers cover all your asset paths (manifest, JS, icons).
+- Plugin code runs in an **isolated sandbox** inside Penpot — it cannot access Penpot's internal state beyond the declared API, and it cannot read user credentials.
+- Only declare the **minimum permissions** your plugin needs. Users see the permission list before installing.
+
+## Installing a Plugin (User Flow)
+
+Once your plugin is deployed, users install it through the Plugin Manager inside the Penpot workspace:
+
+<Steps>
+  <Step title="Open the Plugin Manager">
+    In the Penpot workspace, click the **puzzle-piece icon** (Plugin Manager) in the main toolbar.
+  </Step>
+  <Step title="Paste the manifest URL">
+    Enter the full HTTPS URL to your `manifest.json`, for example:
+
+    ```
+    https://my-penpot-plugin.surge.sh/assets/manifest.json
+    ```
+  </Step>
+  <Step title="Review permissions and install">
+    The Plugin Manager displays the plugin name, description, icon, and the permissions it requests. Click **Install** to confirm.
+  </Step>
+  <Step title="Run the plugin">
+    The installed plugin appears in the Plugin Manager list. Click it to launch. Updates you deploy to the same URL take effect automatically on the next run.
+  </Step>
+</Steps>
+
+<Tip>
+  Share the manifest URL directly with your team so they can install your plugin without waiting for a public listing.
+</Tip>
+
+## Submitting to PenpotHub
+
+PenpotHub is Penpot's community directory for plugins, templates, and libraries. Listing your plugin there makes it discoverable by the entire Penpot community — no code changes are required.
+
+<Steps>
+  <Step title="Ensure your plugin is publicly hosted">
+    Your plugin must be live at a stable HTTPS URL before submitting. Double-check that the manifest URL works from a private / incognito browser window.
+  </Step>
+  <Step title="Fill out the submission form">
+    Go to [penpot.app/penpothub/plugins/create-plugin](https://penpot.app/penpothub/plugins/create-plugin) and provide your plugin's name, description, manifest URL, and icon.
+  </Step>
+  <Step title="Wait for review">
+    The Penpot team reviews submissions and adds approved plugins to the [PenpotHub plugin catalog](https://penpot.app/penpothub/plugins). Once listed, any Penpot user can install your plugin in one click.
+  </Step>
+</Steps>
+
+<Note>
+  There are currently no hard technical requirements for PenpotHub submissions, but the team recommends using a linter (ESLint) and formatter (Prettier) to keep your code clean before submitting.
+</Note>

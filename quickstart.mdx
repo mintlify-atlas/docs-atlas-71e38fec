@@ -1,47 +1,133 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Penpot"
+sidebarTitle: "Quickstart"
+description: "Start designing with Penpot in minutes. Use the hosted cloud at design.penpot.app or spin up a self-hosted instance with a single Docker Compose command."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+Penpot offers two paths to get started: the hosted cloud at [design.penpot.app](https://design.penpot.app) requires no setup at all, while the self-hosted option gives you full control using Docker Compose and takes only a few minutes. This guide walks through both options so you can choose the approach that best fits your team.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+## Option 1: Penpot Cloud (Fastest)
 
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+The Penpot cloud is the quickest way to start designing. No installation, no configuration — just sign up and go.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
-
-    ```bash
-    npm install your-package
-    ```
+  <Step title="Open Penpot in your browser">
+    Navigate to [design.penpot.app](https://design.penpot.app) in any modern browser. Chrome (latest stable) is recommended for the best experience.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
-
-    ```bash
-    your-cli init
-    ```
+  <Step title="Create an account">
+    Register with your email address, or sign in with Google, GitHub, or GitLab if your organization has configured those providers.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
-
-    ```bash
-    your-cli start
-    ```
+  <Step title="Create your first project">
+    From the dashboard, click **New project**, then **New file** to open the Penpot editor and start designing.
   </Step>
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  The cloud version is always on the latest release. If you later decide to self-host, you can export your files and import them into your own instance.
 </Tip>
+
+---
+
+## Option 2: Self-Hosted with Docker Compose
+
+Self-hosting Penpot gives you full ownership of your design data. The official Docker Compose file bundles all required services — frontend, backend, exporter, MCP server, admin console, PostgreSQL, Valkey, and a local SMTP relay — into a single stack.
+
+### Prerequisites
+
+- [Docker Engine](https://docs.docker.com/engine/install/) (v20.10 or later)
+- [Docker Compose](https://docs.docker.com/compose/install/) (v2.x — the `docker compose` plugin, not the legacy `docker-compose` binary)
+- A machine with at least **4 GB RAM** and **20 GB disk** for a small team
+
+<Steps>
+  <Step title="Download the Docker Compose file">
+    Fetch the official compose file from the Penpot repository. You can use either `wget` or `curl`:
+
+    <CodeGroup>
+      ```bash wget
+      wget https://raw.githubusercontent.com/penpot/penpot/main/docker/images/docker-compose.yaml
+      ```
+
+      ```bash curl
+      curl -o docker-compose.yaml https://raw.githubusercontent.com/penpot/penpot/main/docker/images/docker-compose.yaml
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start the stack">
+    Launch all Penpot services in detached mode:
+
+    ```bash
+    docker compose -p penpot -f docker-compose.yaml up -d
+    ```
+
+    Docker will pull the required images on first run. This may take a few minutes depending on your connection speed.
+  </Step>
+
+  <Step title="Open Penpot in your browser">
+    Once all containers are healthy, Penpot is available at:
+
+    ```
+    http://localhost:9001
+    ```
+
+    You should see the Penpot login screen.
+  </Step>
+
+  <Step title="Create your first user">
+    Because public registration is enabled by default in the local configuration, you can register directly from the login page. If you've disabled registration, use the CLI to create a profile:
+
+    ```bash
+    docker exec -ti penpot-penpot-backend-1 python3 manage.py create-profile
+    ```
+
+    <Note>
+      The exact container name depends on your Docker version. Run `docker ps` to confirm the name — it may be `penpot-penpot-backend-1` or `penpot_penpot-backend-1`.
+    </Note>
+  </Step>
+
+  <Step title="(Optional) Pin a specific version">
+    By default, the compose file uses the latest published image. To pin a specific version, set the `PENPOT_VERSION` environment variable:
+
+    ```bash
+    PENPOT_VERSION=2.18 docker compose -p penpot -f docker-compose.yaml up -d
+    ```
+
+    Pinning the version is recommended for production environments so upgrades are intentional.
+  </Step>
+</Steps>
+
+## What's Running
+
+After a successful start, the stack includes the following services:
+
+| Service | Description | Port |
+|---|---|---|
+| `penpot-frontend` | Web UI (Nginx) | `9001` |
+| `penpot-backend` | API and business logic | internal |
+| `penpot-exporter` | Export engine (headless browser) | internal |
+| `penpot-mcp` | MCP server for AI workflows | internal |
+| `penpot-admin-console` | Admin web UI | internal |
+| `penpot-postgres` | PostgreSQL 15 database | internal |
+| `penpot-valkey` | Valkey (Redis-compatible) cache & pub/sub | internal |
+| `penpot-mailpit` | Local SMTP relay / email viewer | `8025` |
+
+<Info>
+  The Mailpit web interface at `http://localhost:8025` lets you read all emails Penpot sends (registration confirmations, team invitations, etc.) without a real SMTP server. Replace it with a production SMTP provider before going live.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker deployment guide" icon="docker" href="/self-hosting/docker">
+    HTTPS, reverse proxy setup, updates, and backups for your Docker installation.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/self-hosting/configuration">
+    Customize flags, auth providers, SMTP, storage backends, and more.
+  </Card>
+  <Card title="Kubernetes" icon="cloud" href="/self-hosting/kubernetes">
+    Deploy Penpot on a Kubernetes cluster using the official Helm chart.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/self-hosting/troubleshooting">
+    Diagnose issues using browser devtools and Docker logs.
+  </Card>
+</CardGroup>

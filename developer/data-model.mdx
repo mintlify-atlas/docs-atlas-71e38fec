@@ -1,0 +1,225 @@
+---
+title: "Penpot Data Model: Files, Pages, and Shapes"
+sidebarTitle: "Data Model"
+description: "Deep dive into Penpot's data model: the file→page→shape hierarchy, shape types, data migrations, component references, and design token structures."
+---
+
+Penpot's data model is one of its most critical subsystems. Every design lives in a tree of immutable Clojure maps, shared between the frontend and backend through the `common/` library. Maintaining the integrity of this data — across saves, exports, imports, and schema migrations — is central to how Penpot works.
+
+## The File → Page → Shape Hierarchy
+
+A Penpot **file** is the top-level container. It holds one or more **pages**, and each page holds a flat map of **shapes** keyed by UUID.
+
+```
+File
+├── id (uuid)
+├── name (string)
+├── version (int)          ← used for data migrations
+├── colors (map)           ← file-level shared assets
+├── typographies (map)
+├── components (map)       ← local component library
+├── media (map)
+└── pages-index (map)
+    └── Page
+        ├── id (uuid)
+        ├── name (string)
+        └── objects (map uuid→Shape)
+            └── Shape
+                ├── id (uuid)
+                ├── type (keyword)
+                ├── name (string)
+                ├── parent-id (uuid)
+                ├── frame-id (uuid)
+                └── ... (type-specific attributes)
+```
+
+<Note>
+The `objects` map is **flat**, not nested. Parent–child relationships are stored via `parent-id` and `frame-id` fields. The `children` vector on each shape lists the UUIDs of its direct children in layer order.
+</Note>
+
+## Shape Types
+
+Every shape has a `:type` keyword that determines which attributes it carries. All shapes share a base set of attributes.
+
+<Accordion title="Base attributes (all shape types)">
+
+| Attribute | Type | Description |
+|---|---|---|
+| `:id` | uuid | Unique identifier |
+| `:type` | keyword | Shape type (see below) |
+| `:name` | string | Display name |
+| `:parent-id` | uuid | Direct parent UUID |
+| `:frame-id` | uuid | Containing frame UUID |
+| `:selrect` | rect | Axis-aligned bounding box |
+| `:points` | vec of points | Corner points (post-transform) |
+| `:transform` | matrix | Local transform matrix |
+| `:transform-inverse` | matrix | Inverse of `:transform` |
+| `:rotation` | number | Rotation in degrees |
+| `:fills` | vec | Fill descriptors |
+| `:strokes` | vec | Stroke descriptors |
+| `:opacity` | number | 0.0–1.0 |
+| `:hidden` | boolean | Layer visibility |
+| `:blocked` | boolean | Locked in the editor |
+
+</Accordion>
+
+<Accordion title="Shape types and their specific attributes">
+
+| Type | Key attributes |
+|---|---|
+| `:frame` | `children`, `width`, `height`, `clip-content`, `show-content` |
+| `:rect` | `rx`, `ry` (border radius) |
+| `:circle` | rendered as SVG ellipse |
+| `:path` | `content` (vector of path commands) |
+| `:text` | `content` (DraftJS-compatible structure), `grow-type` |
+| `:image` | `metadata` (width, height, mtype, id) |
+| `:group` | `children`, `masked-group` |
+| `:bool` | `bool-type` (`:union`, `:difference`, `:intersection`, `:exclusion`), `children` |
+| `:svg-raw` | `content` (raw SVG node map) |
+
+</Accordion>
+
+## General Data Conventions
+
+Understanding these conventions is important before modifying the data model.
+
+<Warning>
+Never store `null`/`nil` as a meaningful attribute value. Penpot treats a missing attribute and a `nil` attribute as identical. If reverting to a default state, remove the key with `dissoc` rather than setting it to `nil`.
+</Warning>
+
+- **Attributes are optional by default.** The absence of an attribute activates the default behavior (e.g. no `:fill-color` means the shape is unfilled).
+- **No trailing `?` in attribute names.** Clojure allows `?` in keywords but it causes issues during export. Use plain names: `:hidden`, `:blocked`, not `:hidden?`.
+- **UUIDs everywhere.** All object identifiers are UUIDs, generated without a central registry, making them safe in multi-user concurrent edits.
+
+## Data Migrations
+
+```text
+common/src/app/common/files/migrations.cljc
+common/src/app/common/files.cljc          ← defines file-version
+```
+
+Every file stored in the database carries a `:version` integer. The current expected version is defined in `common.cljc` as `file-version`. When the backend loads a file whose version is lower than `file-version`, it runs all migration functions in order to bring the data up to date. If the user then saves the file, it is persisted with the new version.
+
+### Adding a migration
+
+<Steps>
+  <Step title="Make your model change">
+    Add, rename, or transform the attribute in the relevant `common/types/*.cljc` file. If the change is non-breaking (new optional attribute), a migration may not be necessary.
+  </Step>
+  <Step title="Increment file-version">
+    In `common/src/app/common/files.cljc`, increment the `file-version` constant.
+  </Step>
+  <Step title="Write the migration function">
+    In `migrations.cljc`, add a new migration clause for the new version. The function receives the raw file data map and returns the transformed map.
+
+    ```clojure
+    ;; migrations.cljc
+    (defmethod migrate-data 42
+      [data]
+      (update data :pages-index
+        (fn [pages]
+          (update-vals pages migrate-page-v42))))
+    ```
+  </Step>
+  <Step title="Test with an existing file">
+    Load a file from the database (or the fixture database) and confirm the migration runs without errors and produces valid data.
+  </Step>
+</Steps>
+
+<Tip>
+Because migrations run lazily on file load, you can deploy a new version without a batch migration job. Files are upgraded on first access.
+</Tip>
+
+## Components and Library References
+
+Penpot's component system allows shapes to be defined once (as a **main component**) and reused many times (as **copies** or **instances**).
+
+### Main components
+
+Defined in `file.components` (a map of component-id → component). Each component stores:
+
+- `:id` — UUID
+- `:name` — display name
+- `:path` — grouping path (e.g. `"Buttons/Primary"`)
+- `:main-instance-id` — UUID of the root shape of the main instance
+- `:main-instance-page` — page where the main instance lives
+- `:shapes` — map of the shapes that form this component
+
+### Component instances (copies)
+
+A shape that is a component instance carries these extra attributes:
+
+```clojure
+{:component-id      #uuid "..."   ;; which component
+ :component-file    #uuid "..."   ;; which file (may be a library)
+ :component-root    true/false    ;; true only on the root shape
+ :main-instance     true/false    ;; true only on the original main
+ :shape-ref         #uuid "..."}  ;; which shape in the main this mirrors
+```
+
+### Synchronization and touched groups
+
+Attribute changes in a main component propagate to all copies unless the copy has been explicitly overridden. The `sync-attrs` map in `common/src/app/common/types/component.cljc` maps each shape attribute to a **sync group**. When an attribute in a copy diverges from the main, the entire group is marked as **touched** on that copy, and future main changes to any attribute in the group no longer propagate.
+
+```clojure
+;; component.cljc
+(def sync-attrs
+  {:fill-color     :fill
+   :fill-opacity   :fill
+   :stroke-color   :stroke
+   :stroke-width   :stroke
+   ;; ...
+   })
+```
+
+Any attribute absent from `sync-attrs` is invisible to the sync engine and will never propagate.
+
+## Design Token Data Structures
+
+Design tokens are stored under `file.tokens-lib`. The tokens library is organized as a tree of **token sets**, each containing **tokens**.
+
+```text
+TokensLib
+└── sets (ordered map name→TokenSet)
+    └── TokenSet
+        ├── name (string)
+        ├── description (string, optional)
+        ├── modified-at (inst)
+        └── tokens (ordered map name→Token)
+            └── Token
+                ├── name (string)
+                ├── type (keyword: :color, :dimension, :string, …)
+                ├── value (string — the raw expression)
+                └── description (string, optional)
+```
+
+Token sets are defined as `defrecord` types implementing the `ITokenSet` protocol in `common/src/app/common/types/tokens_lib.cljc`. Operations go through protocol methods — `add-token`, `update-token`, `delete-token`, `get-token` — to ensure the `modified-at` field is always updated and structural invariants are preserved.
+
+## Export and Import
+
+Shapes are exported to SVG using the same rendering components that display them in the workspace (`frontend/src/app/main/ui/shapes/*.cljs`). Attributes that have no direct SVG equivalent (e.g. proportion locks, constraint axes, stroke alignment) are embedded as metadata attributes in the SVG output by `export.cljs`.
+
+The importer (`frontend/src/app/worker/import/parser.cljs`) reads the SVG and metadata back into Penpot shape maps via the `parse-data` function.
+
+<Warning>
+Any shape attribute not included in both the export and import paths will be silently dropped if the file is exported and re-imported.
+</Warning>
+
+## Edit Forms and Multiple Selection
+
+The workspace sidebar renders a different edit panel for each shape type, defined in:
+
+```text
+frontend/src/app/main/ui/workspace/sidebar/options/shapes/
+├── bool.cljs
+├── circle.cljs
+├── frame.cljs
+├── group.cljs
+├── image.cljs
+├── multiple.cljs   ← used when multiple shapes are selected
+├── path.cljs
+├── rect.cljs
+└── text.cljs
+```
+
+When multiple shapes are selected, `multiple.cljs` is rendered. For each attribute, if all selected shapes share the same value, that value is displayed; if they differ, the attribute shows `:multiple`. Form blocks in `menus/*.cljs` must handle `:multiple` gracefully — typically by setting the attribute on all eligible shapes when the user makes a change.

@@ -1,0 +1,580 @@
+---
+title: "Create a Penpot Plugin from Scratch"
+sidebarTitle: "Create Plugin"
+description: "Step-by-step guide to building a Penpot plugin from scratch with Angular, React, Vue, or Svelte — from project setup to loading in the workspace."
+---
+
+Building a Penpot plugin from scratch gives you full control over your tooling, project structure, and UI framework. This guide walks through every step: creating a new project, installing the Penpot npm packages, writing the `manifest.json` and `plugin.ts` files, wiring up two-way communication between plugin logic and UI, and finally loading the plugin in Penpot for testing.
+
+<Note>
+  Before you start, check [Penpot Hub](https://penpot.app/penpothub/plugins) to see whether a similar plugin already exists. Collaboration is always welcome, but unique contributions are encouraged too.
+</Note>
+
+## Prerequisites
+
+- Node.js v22 or later and npm
+- A Penpot workspace (cloud or self-hosted)
+- Basic knowledge of TypeScript and your chosen framework
+
+---
+
+## Step 1 — Create the project
+
+Choose your framework and scaffold a new project. The versions shown below are what the Penpot team uses in the official [plugin-examples](https://github.com/penpot/plugin-examples) repository.
+
+<CodeGroup>
+
+```bash Angular
+ng new my-plugin
+cd my-plugin
+```
+
+```bash React
+npm create vite@latest my-plugin -- --template react-ts
+cd my-plugin
+```
+
+```bash Vue
+npm create vue@latest
+# Follow the prompts; enable TypeScript when asked
+cd my-plugin
+```
+
+```bash Svelte
+npm create svelte@latest my-plugin
+cd my-plugin
+```
+
+</CodeGroup>
+
+---
+
+## Step 2 — Install Penpot libraries
+
+Two packages ship as npm packages that you can add to any project.
+
+### `@penpot/plugin-types`
+
+TypeScript typings for the full Penpot Plugin API. This gives you autocompletion and inline documentation for the `penpot` global inside your IDE.
+
+```bash
+npm install @penpot/plugin-types
+```
+
+If you're using TypeScript, register the package in your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "typeRoots": ["./node_modules/@types", "./node_modules/@penpot"],
+    "types": ["plugin-types"]
+  }
+}
+```
+
+### `@penpot/plugin-styles`
+
+A CSS library that mirrors Penpot's design system — buttons, inputs, selects, checkboxes, typography, and dark/light theme variables. Using it makes your plugin look native inside Penpot.
+
+```bash
+npm install @penpot/plugin-styles
+```
+
+Import it once in your global CSS file:
+
+```css
+@import "@penpot/plugin-styles/styles.css";
+```
+
+<Tip>
+  Using `@penpot/plugin-styles` is optional but strongly recommended. It handles dark/light theme switching automatically and ensures your plugin's visual language stays consistent with Penpot's own UI.
+</Tip>
+
+---
+
+## Step 3 — Create the plugin logic file
+
+Create a `plugin.ts` file inside your `src/` directory. This is the **only** file where the `penpot` global object is available. It acts as the bridge between the Penpot API and your UI iframe.
+
+A minimal `plugin.ts` that opens the UI:
+
+```ts
+// src/plugin.ts
+
+penpot.ui.open('My Plugin', '', {
+  width: 400,
+  height: 600,
+});
+```
+
+The `width` and `height` options are optional. The default size is 285×540 pixels.
+
+### Reading the current selection
+
+```ts
+// src/plugin.ts
+
+penpot.ui.open('Selection Inspector', '', { width: 320, height: 480 });
+
+penpot.on('selectionchange', () => {
+  penpot.ui.sendMessage({
+    type: 'selection',
+    shapes: penpot.selection.map((shape) => ({
+      id: shape.id,
+      name: shape.name,
+      type: shape.type,
+    })),
+  });
+});
+```
+
+### Responding to theme changes
+
+Always forward the initial theme and subsequent changes so your UI can apply the correct CSS class:
+
+```ts
+// src/plugin.ts
+
+penpot.ui.open('My Plugin', `?theme=${penpot.theme}`, { width: 400, height: 600 });
+
+penpot.on('themechange', (theme) => {
+  penpot.ui.sendMessage({ type: 'theme', content: theme });
+});
+```
+
+---
+
+## Step 4 — Wire up UI ↔ plugin communication
+
+Penpot uses standard browser `postMessage` events to relay data between your `plugin.ts` and the iframe. The `penpot.ui.sendMessage` / `penpot.ui.onMessage` helpers wrap this on the plugin-logic side; on the UI side you use the raw `window` API.
+
+### Sending data from plugin logic → UI
+
+```ts
+// src/plugin.ts — send any serialisable value
+penpot.ui.sendMessage({ type: 'selection', shapes: [...] });
+```
+
+### Receiving messages in the UI
+
+<CodeGroup>
+
+```ts Angular (app.component.ts)
+import { Component, OnInit } from '@angular/core';
+import { fromEvent } from 'rxjs';
+import { filter, map } from 'rxjs/operators';
+
+@Component({ selector: 'app-root', templateUrl: './app.component.html' })
+export class AppComponent implements OnInit {
+  shapes: { id: string; name: string; type: string }[] = [];
+
+  ngOnInit() {
+    fromEvent<MessageEvent>(window, 'message')
+      .pipe(
+        filter((e) => e.source === window.parent),
+        map((e) => e.data),
+      )
+      .subscribe((message) => {
+        if (message.type === 'selection') {
+          this.shapes = message.shapes;
+        }
+        if (message.type === 'theme') {
+          document.documentElement.setAttribute('data-theme', message.content);
+        }
+      });
+  }
+
+  sendToPlugin(payload: unknown) {
+    parent.postMessage(payload, '*');
+  }
+}
+```
+
+```tsx React (App.tsx)
+import { useEffect, useState } from 'react';
+
+type Shape = { id: string; name: string; type: string };
+
+export default function App() {
+  const [shapes, setShapes] = useState<Shape[]>([]);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      const message = event.data;
+      if (message.type === 'selection') setShapes(message.shapes);
+      if (message.type === 'theme') {
+        document.documentElement.setAttribute('data-theme', message.content);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const sendToPlugin = (payload: unknown) => parent.postMessage(payload, '*');
+
+  return (
+    <ul>
+      {shapes.map((s) => (
+        <li key={s.id}>{s.name} ({s.type})</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+```vue Vue (App.vue)
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
+
+const shapes = ref<{ id: string; name: string; type: string }[]>([]);
+
+onMounted(() => {
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (event.source !== window.parent) return;
+    const message = event.data;
+    if (message.type === 'selection') shapes.value = message.shapes;
+    if (message.type === 'theme') {
+      document.documentElement.setAttribute('data-theme', message.content);
+    }
+  });
+});
+
+const sendToPlugin = (payload: unknown) => parent.postMessage(payload, '*');
+</script>
+
+<template>
+  <ul>
+    <li v-for="shape in shapes" :key="shape.id">
+      {{ shape.name }} ({{ shape.type }})
+    </li>
+  </ul>
+</template>
+```
+
+```svelte Svelte (App.svelte)
+<script lang="ts">
+  import { onMount } from 'svelte';
+
+  let shapes: { id: string; name: string; type: string }[] = [];
+
+  onMount(() => {
+    window.addEventListener('message', (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      const message = event.data;
+      if (message.type === 'selection') shapes = message.shapes;
+      if (message.type === 'theme') {
+        document.documentElement.setAttribute('data-theme', message.content);
+      }
+    });
+  });
+
+  const sendToPlugin = (payload: unknown) => parent.postMessage(payload, '*');
+</script>
+
+<ul>
+  {#each shapes as shape (shape.id)}
+    <li>{shape.name} ({shape.type})</li>
+  {/each}
+</ul>
+```
+
+</CodeGroup>
+
+### Receiving messages in plugin logic (UI → plugin)
+
+```ts
+// src/plugin.ts
+
+penpot.ui.onMessage<{ type: string; text: string }>((message) => {
+  if (message.type === 'create-text') {
+    const textShape = penpot.createText(message.text);
+    if (textShape) {
+      textShape.x = penpot.viewport.center.x;
+      textShape.y = penpot.viewport.center.y;
+    }
+  }
+});
+```
+
+---
+
+## Step 5 — Build the plugin file for local serving
+
+Your `plugin.ts` lives in `src/` but Penpot needs to load the compiled `plugin.js` over HTTP. You need to make it reachable at a public path.
+
+<Tabs>
+  <Tab title="Vite">
+    Add a `rollupOptions` entry to your `vite.config.ts` so Vite compiles `plugin.ts` as a separate output:
+
+    ```ts
+    // vite.config.ts
+    import { defineConfig } from 'vite';
+
+    export default defineConfig({
+      build: {
+        rollupOptions: {
+          input: {
+            plugin: 'src/plugin.ts',
+            index: './index.html',
+          },
+          output: {
+            entryFileNames: '[name].js',
+          },
+        },
+      },
+      preview: {
+        port: 4200,
+      },
+    });
+    ```
+
+    Add a combined dev script to `package.json`:
+
+    ```json
+    {
+      "scripts": {
+        "dev": "vite build --watch & vite preview",
+        "build": "tsc && vite build"
+      }
+    }
+    ```
+
+    Now `npm run dev` watches for changes, rebuilds, and serves both the UI and `plugin.js` from the same local server.
+  </Tab>
+  <Tab title="esbuild (Angular / custom)">
+    Install esbuild as a dev dependency:
+
+    ```bash
+    npm install -D esbuild
+    ```
+
+    Add a build script for the plugin file in `package.json`:
+
+    ```json
+    {
+      "scripts": {
+        "start": "npm run build:plugin && ng serve",
+        "build:plugin": "esbuild src/plugin.ts --bundle --minify --outfile=public/plugin.js"
+      }
+    }
+    ```
+
+    Run `npm run build:plugin` every time you change `plugin.ts`, or add a file watcher to automate it.
+
+    <Note>
+      With Angular, the `ng serve` command handles the UI; esbuild handles just the `plugin.ts` → `plugin.js` compilation.
+    </Note>
+  </Tab>
+</Tabs>
+
+---
+
+## Step 6 — Configure the manifest
+
+Place your `manifest.json` inside the `public/` folder (or wherever your static assets are served from) so it is reachable at `http://localhost:PORT/manifest.json`.
+
+```json
+{
+  "name": "My Plugin",
+  "description": "Describe what your plugin does",
+  "version": 2,
+  "code": "plugin.js",
+  "icon": "icon.png",
+  "permissions": [
+    "content:read",
+    "content:write"
+  ]
+}
+```
+
+### Manifest field reference
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | ✅ | Short display name shown in the Plugin Manager |
+| `description` | ✅ | One-line description shown below the name |
+| `version` | ✅ | Use `2` for relative paths; omit or use `1` for absolute URLs |
+| `code` | ✅ | Path to the compiled `plugin.js` file |
+| `icon` | ✅ | Path to the plugin icon (56×56 px recommended; any image format) |
+| `permissions` | ✅ | Array of permission strings (see below) |
+
+### Permissions reference
+
+Declare only the permissions your plugin genuinely requires. Users see this list before installing.
+
+| Permission | Description |
+|---|---|
+| `content:read` | Read shapes, pages, design elements, and their properties |
+| `content:write` | Create, update, and delete shapes and design elements (includes `content:read`) |
+| `library:read` | Read shared library components and assets |
+| `library:write` | Add, update, or remove library assets (includes `library:read`) |
+| `user:read` | Read user profiles and active-user positions |
+| `comment:read` | Read comments and annotations on pages |
+| `comment:write` | Create, reply to, and delete comments (includes `comment:read`) |
+| `allow:downloads` | Download the full project file |
+| `allow:localstorage` | Persist data via a local-storage proxy (browser-visible to the user) |
+
+---
+
+## Step 7 — Load the plugin in Penpot
+
+You do not need to deploy your plugin to test it. Your local dev server is compatible with `https://penpot.app`.
+
+<Steps>
+
+### Verify the local URLs
+
+Before loading in Penpot, confirm these two URLs return the expected content in your browser:
+
+- `http://localhost:PORT/manifest.json` — should return your manifest JSON
+- `http://localhost:PORT/plugin.js` — should return compiled JavaScript
+
+### Open the Plugin Manager
+
+Use any of these methods inside the Penpot workspace:
+
+| Method | How |
+|---|---|
+| **Keyboard shortcut** | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd> (Linux/Windows) · <kbd>⌘</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd> (macOS) |
+| **Main menu** | Click the Penpot logo → **Plugin manager** |
+| **Toolbar** | Click the plug icon in the left sidebar |
+
+### Install your plugin
+
+Paste the manifest URL into the input field:
+
+```
+http://localhost:PORT/manifest.json
+```
+
+Click **Install**. Penpot will read the manifest, validate it, and add the plugin to your installed list.
+
+### Open and test
+
+Click your plugin's name or icon in the Plugin Manager to launch it. The plugin modal will appear in the workspace. Select shapes, interact with your UI, and verify the plugin behaves as expected.
+
+</Steps>
+
+<Warning>
+  If the Plugin Manager refuses to load your manifest, check the browser console for CORS errors. Add the following `_headers` file to your `public/` directory to allow cross-origin requests:
+
+  ```
+  /*
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST, OPTIONS
+    Access-Control-Allow-Headers: Content-Type
+  ```
+</Warning>
+
+---
+
+## Real-world examples
+
+The Penpot repository ships several production plugins you can study. Here are two contrasting examples:
+
+### Headless plugin — Create Palette
+
+The Create Palette plugin has **no UI at all**. It reads the local library colors, generates a board, and closes itself:
+
+```ts
+// plugins/apps/create-palette-plugin/src/plugin.ts
+
+main();
+
+function main() {
+  createPalette();
+  penpot.closePlugin();
+}
+
+function createPalette() {
+  const colors = penpot.library.local.colors.sort((a, b) =>
+    a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1,
+  );
+
+  const board = penpot.createBoard();
+  board.name = 'Palette';
+  board.x = penpot.viewport.center.x - 100;
+  board.y = penpot.viewport.center.y - 50;
+
+  const grid = board.addGridLayout();
+  grid.rowGap = 10;
+  grid.columnGap = 10;
+  grid.verticalPadding = 10;
+  grid.horizontalPadding = 10;
+
+  colors.forEach((color) => {
+    const cell = penpot.createBoard();
+    cell.fills = [color.asFill()];
+    grid.appendChild(cell, 1, 1);
+  });
+}
+```
+
+### Full-stack plugin — Lorem Ipsum
+
+The Lorem Ipsum plugin uses Angular for its UI and demonstrates the complete message loop between plugin logic and UI:
+
+```ts
+// plugins/apps/lorem-ipsum-plugin/src/plugin.ts
+
+penpot.ui.open('LOREM IPSUM PLUGIN', `?theme=${penpot.theme}`);
+
+// Forward theme changes to the UI
+penpot.on('themechange', (theme) => {
+  penpot.ui.sendMessage({ type: 'theme', content: theme });
+});
+
+// Notify the UI when the selection changes
+penpot.on('selectionchange', () => {
+  const textShapes = penpot.selection.filter((it) =>
+    penpot.utils.types.isText(it),
+  );
+  penpot.ui.sendMessage({ type: 'selection', content: textShapes.length });
+});
+
+// Handle messages from the UI
+penpot.ui.onMessage((message: { type: string }) => {
+  if (message.type === 'text') {
+    // generate and insert lorem ipsum text...
+  }
+});
+```
+
+---
+
+## Deploying your plugin
+
+When you're ready to share your plugin, build it and deploy the output to any static hosting service. For Netlify and Cloudflare Pages you can connect your Git repository for automatic deploys on every push.
+
+```bash
+npm run build
+# Upload the contents of dist/ to your host
+```
+
+Once deployed, your manifest URL will look like:
+
+```
+https://your-domain.com/assets/manifest.json
+```
+
+To list your plugin in the official catalog, submit it at [penpot.app/penpothub/plugins/create-plugin](https://penpot.app/penpothub/plugins/create-plugin).
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Plugin API Reference" icon="book" href="https://doc.plugins.penpot.app">
+    Full TypeScript API docs for every interface and method in the Penpot Plugin API.
+  </Card>
+  <Card title="Plugin Styles" icon="palette" href="https://styles-doc.plugins.penpot.app">
+    Interactive docs for all components in @penpot/plugin-styles.
+  </Card>
+  <Card title="Plugin Samples" icon="shapes" href="https://github.com/penpot/penpot-plugins-samples">
+    Community plugin samples covering components, prototyping, themes, and more.
+  </Card>
+  <Card title="Penpot Hub" icon="share" href="https://penpot.app/penpothub/plugins">
+    Browse existing plugins and share your own with the Penpot community.
+  </Card>
+</CardGroup>

@@ -1,0 +1,203 @@
+---
+title: "CSS Grid and Flex Layout in Penpot"
+sidebarTitle: "Layouts"
+description: "Design responsive interfaces with Penpot's CSS Flex and Grid layout system — mirror real CSS properties and produce accurate code from day one."
+---
+
+Penpot's layout engine is built directly on the mental model of **CSS Flexbox** and **CSS Grid**. When you enable a layout on a frame, you are defining the same properties a front-end developer would write — `flex-direction`, `gap`, `padding`, `align-items`, `justify-content`, `grid-template-columns`, and so on. Because the mapping is one-to-one, the CSS exported from the Inspect tab is immediately usable without translation.
+
+## Enabling a layout
+
+Layout is always enabled on a **frame** (artboard or component frame). Select a frame and, in the Design panel under the **Layout** section, click the **+** icon and choose **Flex** or **Grid**.
+
+<Tabs>
+  <Tab title="Flex layout">
+    Enabling Flex layout sets `layout: :flex` on the frame. The frame becomes a flex container and its direct children become flex items. The previous static positions of children are replaced by the layout algorithm's computed positions.
+  </Tab>
+  <Tab title="Grid layout">
+    Enabling Grid layout sets `layout: :grid` on the frame. The frame becomes a grid container. Children are placed into grid cells, which are defined by explicit column and row tracks.
+  </Tab>
+</Tabs>
+
+<Warning>
+  Enabling a layout replaces manual x/y positioning for **direct children**. If you need to absolutely position a child within a layout container, enable **Absolute position** on that child's layout item settings (sets `layout-item-absolute: true`).
+</Warning>
+
+## Flex layout
+
+### Direction and wrapping
+
+| Penpot property | CSS equivalent | Values |
+|---|---|---|
+| `layout-flex-dir` | `flex-direction` | `row`, `row-reverse`, `column`, `column-reverse` |
+| `layout-wrap-type` | `flex-wrap` | `wrap`, `nowrap` |
+
+### Alignment
+
+| Penpot property | CSS equivalent | Values |
+|---|---|---|
+| `layout-justify-content` | `justify-content` | `start`, `center`, `end`, `space-between`, `space-around`, `space-evenly` |
+| `layout-align-items` | `align-items` | `start`, `center`, `end`, `stretch` |
+| `layout-align-content` | `align-content` | `start`, `center`, `end`, `space-between`, `space-around`, `space-evenly`, `stretch` |
+
+### Gap and padding
+
+| Penpot attribute | CSS equivalent | Internal shape attribute |
+|---|---|---|
+| Row gap | `row-gap` | `layout-gap.row-gap` |
+| Column gap | `column-gap` | `layout-gap.column-gap` |
+| Padding top | `padding-top` | `layout-padding.p1` |
+| Padding right | `padding-right` | `layout-padding.p2` |
+| Padding bottom | `padding-bottom` | `layout-padding.p3` |
+| Padding left | `padding-left` | `layout-padding.p4` |
+
+When `layout-gap-type` is `:simple`, the same value applies to both row and column gap. When `:multiple`, they can differ. The same simple/multiple toggle applies to padding via `layout-padding-type`.
+
+### Generated CSS example
+
+```css
+/* Penpot frame with flex layout */
+.card-list {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;        /* layout-gap: { row-gap: 16, column-gap: 16 } */
+  padding: 24px;    /* layout-padding: { p1: 24, p2: 24, p3: 24, p4: 24 } */
+}
+```
+
+## Grid layout
+
+### Track definition
+
+Columns and rows are defined as arrays of **track** objects. Each track has a `type` and optional `value`:
+
+| Track type | CSS equivalent | Notes |
+|---|---|---|
+| `flex` | `fr` unit | `{ type: :flex, value: 1 }` → `1fr` |
+| `fixed` | `px` value | `{ type: :fixed, value: 200 }` → `200px` |
+| `percent` | `%` value | `{ type: :percent, value: 50 }` → `50%` |
+| `auto` | `auto` | `{ type: :auto }` → `auto` |
+
+```json
+"layout-grid-columns": [
+  { "type": "fixed", "value": 200 },
+  { "type": "flex", "value": 1 },
+  { "type": "flex", "value": 2 }
+]
+```
+
+This produces `grid-template-columns: 200px 1fr 2fr;`.
+
+### Grid direction
+
+`layout-grid-dir` controls the auto-placement algorithm:
+- `:row` → `grid-auto-flow: row` (fills rows first)
+- `:column` → `grid-auto-flow: column` (fills columns first)
+
+### Cell placement and spanning
+
+Each child shape is assigned to a **grid cell** object stored in `layout-grid-cells`. A cell defines:
+
+| Attribute | Description |
+|---|---|
+| `row`, `column` | 1-indexed grid position |
+| `row-span`, `column-span` | How many tracks the cell spans |
+| `position` | `:auto`, `:manual`, or `:area` |
+| `align-self`, `justify-self` | Per-cell alignment overrides |
+| `area-name` | Named grid area (for `:area` position cells) |
+
+<Tip>
+  Drag a cell's resize handle in the grid editor to create spanning cells that cover multiple rows or columns — equivalent to `grid-column: 1 / span 3` in CSS.
+</Tip>
+
+### Generated CSS example
+
+```css
+/* Penpot frame with grid layout */
+.dashboard {
+  display: grid;
+  grid-template-columns: 200px 1fr 2fr;
+  grid-template-rows: auto 1fr auto;
+  gap: 16px 24px; /* row-gap column-gap */
+  padding: 32px;
+  grid-auto-flow: row;
+}
+
+/* Child placed in cell row=1, column=2, spanning 2 columns */
+.main-content {
+  grid-column: 2 / span 2;
+  grid-row: 1;
+}
+```
+
+## Child sizing (fill, fixed, hug)
+
+Every direct child of a layout frame has **horizontal sizing** (`layout-item-h-sizing`) and **vertical sizing** (`layout-item-v-sizing`). These three sizing modes map to the most common responsive patterns:
+
+<CardGroup cols={3}>
+  <Card title="Fix" icon="lock">
+    **Fixed size** — the child maintains an explicit pixel width and height. Equivalent to a hard-coded `width: 200px`.
+  </Card>
+  <Card title="Fill" icon="arrows-left-right">
+    **Fill container** — the child grows to fill available space in the layout direction. Equivalent to `flex: 1` in flex or `1fr` in grid.
+  </Card>
+  <Card title="Auto / Hug" icon="compress-arrows-alt">
+    **Hug contents** — the frame or child shrinks to wrap its contents. Equivalent to `width: fit-content` or no explicit size set.
+  </Card>
+</CardGroup>
+
+These sizing modes are stored as:
+- `layout-item-h-sizing: :fill | :fix | :auto`
+- `layout-item-v-sizing: :fill | :fix | :auto`
+
+You can also set explicit minimum and maximum dimensions:
+- `layout-item-min-w`, `layout-item-max-w`
+- `layout-item-min-h`, `layout-item-max-h`
+
+```css
+/* Fill child in a flex row */
+.fill-child {
+  flex: 1;          /* layout-item-h-sizing: :fill */
+}
+
+/* Hug-contents frame */
+.hug-frame {
+  width: fit-content;  /* layout-item-h-sizing: :auto */
+}
+```
+
+## Layout item margins
+
+Children inside a layout frame have a **margin** property (`layout-item-margin`) with four values (`m1`–`m4` for top, right, bottom, left). In flex layout this maps to CSS `margin`; in grid layout it maps to the cell's offset.
+
+When `layout-item-margin-type` is `:simple`, `m1` and `m3` are equal (top/bottom) and `m2` and `m4` are equal (left/right), producing the shorthand `margin: 8px 16px`. When `:multiple`, all four values are independent.
+
+## Absolute positioning inside a layout
+
+Enable **Absolute position** on any layout child to take it out of the normal flow without disabling the parent layout for other children. The shape gets `layout-item-absolute: true`, and its x/y position is set relative to the parent frame — equivalent to `position: absolute` inside a `position: relative` container.
+
+<Note>
+  Absolutely positioned children within a layout frame also support `layout-item-z-index` to control stack order within the parent, mapping directly to the CSS `z-index` property.
+</Note>
+
+## Constraints vs layout
+
+Layout and [constraints](/features/design-workspace) serve different purposes:
+
+- **Constraints** (`constraints-h`, `constraints-v`) control how a shape resizes when its **parent frame is manually resized** in the absence of a layout. They are the "static" responsive mode.
+- **Layout** (Flex / Grid) controls how children are **dynamically positioned and sized** by the layout algorithm. Layout overrides constraints for direct layout children.
+
+When a frame has a layout enabled, its direct children should use the sizing (fill/fix/auto) and alignment controls rather than constraints.
+
+## Using tokens with layout
+
+Design tokens of type `spacing` and `dimensions` can be applied to layout properties directly:
+
+- Apply a `spacing` token to **padding** fields to bind `layout-padding` to a token like `spacing.lg`.
+- Apply a `spacing` token to **gap** to bind `layout-gap.row-gap` or `layout-gap.column-gap`.
+- Apply a `sizing` token to **width** or **height** constraints.
+
+This ensures that spacing changes in your token system automatically reflow all layouts that reference those tokens.

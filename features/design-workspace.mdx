@@ -1,0 +1,132 @@
+---
+title: "Penpot Design Workspace: Layers, Pages, and Shapes"
+sidebarTitle: "Workspace"
+description: "Explore Penpot's design workspace: infinite canvas, layered shape tree, multi-page files, and nine shape types that export to standards-compliant SVG."
+---
+
+Penpot's design workspace is a browser-based, infinite canvas where designers and developers collaborate on the same file simultaneously. Every element you place on the canvas is modelled as a **shape** — a typed data structure that maps directly to an SVG node. Because Penpot works on open standards (SVG, CSS, HTML, and JSON), the output of any design is immediately readable by browsers, code editors, and automated toolchains without conversion.
+
+## Canvas and navigation
+
+The workspace opens to an infinite, zoomable canvas. Frames (artboards) sit directly on the canvas and act as the root containers for your designs. You can zoom with the scroll wheel or the `+` / `-` keys, pan by holding `Space`, and reset the view with `Ctrl+0` (or `Cmd+0` on macOS).
+
+<Tip>
+  Press `Ctrl+Shift+H` (`Cmd+Shift+H`) at any time to fit all frames in the viewport — useful when you want a quick overview of an entire page.
+</Tip>
+
+## Pages
+
+A single Penpot file can contain multiple **pages**. Pages are listed at the top of the left panel. Each page stores its own independent tree of shapes (`objects` map keyed by UUID), its own guides, background color, and prototype flows. Pages share the file's library assets (components, colors, typographies, design tokens) but have no spatial relationship to each other.
+
+<Steps>
+  <Step title="Add a page">
+    Click the `+` icon next to the page tabs at the top-left of the workspace.
+  </Step>
+  <Step title="Rename a page">
+    Double-click the page tab to rename it inline.
+  </Step>
+  <Step title="Duplicate or delete">
+    Right-click a tab to access **Duplicate page** or **Delete page**.
+  </Step>
+</Steps>
+
+## Layers panel
+
+The **Layers panel** (left sidebar) shows the full shape tree for the current page. Shapes are listed in reverse paint order — the topmost layer in the list renders in front. You can:
+
+- **Expand / collapse** groups and frames with the triangle icon.
+- **Rename** any shape by double-clicking its name.
+- **Toggle visibility** with the eye icon (sets `hidden: true` on the shape).
+- **Lock** a shape with the padlock icon (sets `blocked: true`).
+- **Drag** layers to reorder or reparent them.
+
+Selecting a shape in the layers panel simultaneously highlights it on the canvas and opens its properties in the right-hand **Design panel**.
+
+## Shape types
+
+Penpot supports nine shape types. Every shape shares a common set of base attributes (`id`, `name`, `type`, `selrect`, `points`, `transform`, `parent-id`, `frame-id`) and is serialised as a single JSON object in the `.penpot` file format.
+
+<CardGroup cols={2}>
+  <Card title="Frame" icon="square-dashed">
+    The primary container (artboard). Frames can host other frames, groups, and all other shape types. Only frames can have Flex or Grid layout enabled. Frames define the clipping boundary of exported SVG.
+  </Card>
+  <Card title="Group" icon="object-group">
+    A logical grouping with no visual representation of its own. Groups clip their children to the union bounding box and participate in the layer hierarchy. Boolean operations produce a specialised **bool** shape.
+  </Card>
+  <Card title="Rectangle" icon="square">
+    An axis-aligned rectangle with independent corner radii (`r1`–`r4`). Renders as an SVG `<rect>` with optional `rx`/`ry`.
+  </Card>
+  <Card title="Ellipse / Circle" icon="circle">
+    Renders as an SVG `<ellipse>`. The visual radius attributes (`rx`, `ry`) are derived from the shape's `width` and `height`.
+  </Card>
+  <Card title="Path" icon="bezier-curve">
+    A vector path described by SVG path commands stored in the `content` attribute. Used for custom icons, illustrations, and boolean shape results.
+  </Card>
+  <Card title="Text" icon="font">
+    A rich-text shape whose content is a nested tree of root → paragraph → text-node objects, each carrying independent font, fill, and decoration attributes.
+  </Card>
+  <Card title="Image" icon="image">
+    An embedded raster image. The `metadata` attribute carries `width`, `height`, `mtype` (MIME type), and the UUID reference to the stored binary object.
+  </Card>
+  <Card title="Component instance" icon="puzzle-piece">
+    Not a separate type — component instances are `frame` shapes that carry `component-id`, `component-file`, and `shape-ref` attributes linking them to a main component definition.
+  </Card>
+</CardGroup>
+
+A ninth type, **svg-raw**, preserves raw SVG elements imported from external SVG files, allowing Penpot to round-trip SVG content it does not natively model.
+
+## Design and Prototype modes
+
+The top toolbar switches between **Design** mode (the default) and **Prototype** mode. In Prototype mode, you draw interaction arrows between frames to define flows, triggers, and animations. These interactions are stored in the `interactions` array on each shape and are played back in the **Viewer**.
+
+<Tabs>
+  <Tab title="Design mode">
+    The right sidebar shows geometry (x, y, width, height), fills, strokes, shadows, blur, and layout properties. Changes here are immediately reflected on the canvas and written into the shape's data.
+  </Tab>
+  <Tab title="Prototype mode">
+    Click a shape and drag from its blue handle to another frame to create an interaction. You can set the trigger (`on-click`, `mouse-enter`, etc.), the destination frame, and the transition animation type and duration.
+  </Tab>
+</Tabs>
+
+## Design panel (right sidebar)
+
+The Design panel is context-sensitive. Select a shape to inspect or edit:
+
+| Section | What you configure |
+|---|---|
+| **Alignment & distribution** | Align to parent, canvas, or selection; distribute spacing evenly |
+| **Frame & dimensions** | x, y, width, height with constraint locks |
+| **Layout** | Enable Flex or Grid, configure direction, gap, padding |
+| **Fill** | Solid color, linear/radial gradient, or image fill — supports opacity and blending |
+| **Stroke** | Style (solid, dashed, dotted, mixed), alignment (inner, outer, center), width, and color |
+| **Shadow** | Drop shadow or inner shadow with x/y offset, blur, spread, color |
+| **Blur** | Gaussian blur radius |
+| **Design tokens** | View and apply tokens bound to the shape's `applied-tokens` map |
+| **Exports** | Define PNG, SVG, or PDF export presets |
+
+## SVG output and open standards
+
+When you export a shape (or view it in Inspect mode), Penpot renders the shape tree to SVG. Each shape type maps to a specific SVG element:
+
+```xml
+<!-- Frame → <svg> or <g> with clip-path -->
+<svg width="375" height="812" viewBox="0 0 375 812">
+  <!-- Rect → <rect> -->
+  <rect x="16" y="24" width="343" height="56" rx="8" ry="8"
+        fill="#0066CC" opacity="1"/>
+  <!-- Text → <text> / <tspan> -->
+  <text x="32" y="56" font-family="Inter" font-size="16" fill="#FFFFFF">
+    <tspan>Hello, world</tspan>
+  </text>
+</svg>
+```
+
+Non-SVG metadata (proportion locks, constraints, component links, design tokens) is embedded as `penpot:` namespace attributes so files can be round-tripped back into the editor without loss.
+
+## Inspect tab for developers
+
+The **Inspect** tab (accessible from the top-right of the workspace, or by sharing a view-only link) lets developers browse every shape's computed CSS, SVG, and HTML without a Penpot account. See [Inspect Mode](/features/inspect-mode) for full details.
+
+<Note>
+  Developers with a **Viewer** role can access the Inspect tab on any file shared with them, without being able to edit anything. This makes design handoff a zero-friction read-only workflow.
+</Note>

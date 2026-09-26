@@ -1,0 +1,201 @@
+---
+title: "Inspect Mode: Export CSS, SVG, and HTML from Designs"
+sidebarTitle: "Inspect Mode"
+description: "Use Penpot's Inspect tab to extract ready-to-use CSS, SVG, and HTML code from any design — no design tool license needed for developers."
+---
+
+Inspect mode is the developer-facing layer of Penpot. It surfaces every visual property of a design as structured data and ready-to-use code, so developers can implement a design accurately without having to interpret screenshots or translate values manually. Because Penpot is built on open standards, the output is not an approximation — it is the actual CSS, SVG, and HTML that represents the design.
+
+## Accessing Inspect mode
+
+There are two ways to reach Inspect mode:
+
+1. **In the workspace** — click the **Inspect** tab in the top-right of the design panel (the `</>` icon). You stay inside the full editor and can switch between Design and Inspect views for the selected shape.
+2. **Via a share link** — click **Share** in the workspace header and choose **Get shareable link** with Viewer + Inspect permissions. Recipients can open the Inspect tab without a Penpot account and without edit access. This is the recommended path for developer handoff.
+
+<Info>
+  Shared Inspect links respect the file's permission model. A link with **View only** permissions hides the Inspect tab. A link with **Inspect** permissions shows full code output.
+</Info>
+
+## The Info tab
+
+When you click a shape in the Inspect view, the **Info tab** shows a structured breakdown of every property. The panel is powered by the `attributes/*.cljs` modules in the frontend, which extract properties from each shape type.
+
+### Dimensions and position
+
+| Property shown | Shape attribute | Notes |
+|---|---|---|
+| Width | `width` | In pixels |
+| Height | `height` | In pixels |
+| X | `x` | Distance from the parent frame's left edge |
+| Y | `y` | Distance from the parent frame's top edge |
+| Rotation | `rotation` | Degrees; pulled from the shape's `transform` matrix |
+
+### Fill
+
+For each fill in the `fills` array, Inspect shows:
+- **Solid color**: hex value, RGB values, and CSS color string.
+- **Linear gradient**: angle, and each stop with color and position.
+- **Radial gradient**: center point, radius, and stops.
+- **Image fill**: a reference to the embedded image with dimensions.
+
+### Stroke
+
+For each stroke in the `strokes` array:
+- Color, opacity
+- Style: solid, dashed, dotted, or mixed
+- Alignment: inner, center, outer
+- Width (global, or per-side for rectangles and frames)
+
+### Shadow and blur
+
+Each shadow in the `shadow` array shows: type (drop / inner), x offset, y offset, blur radius, spread, and color. The `blur` attribute shows the Gaussian blur radius.
+
+### Typography
+
+For text shapes, the Info tab shows:
+- Font family (`font-family`)
+- Font size (`font-size`)
+- Font weight (`font-weight`)
+- Font style (italic / normal)
+- Line height (`line-height`)
+- Letter spacing (`letter-spacing`)
+- Text align and text decoration
+- The text content itself
+
+### Layout properties
+
+For frames with a Flex or Grid layout, Inspect shows all container properties (direction, gap, padding, alignment) and per-child sizing and margin properties.
+
+## The Code tab
+
+The Code tab is where Penpot generates ready-to-use markup and styles. Use the format selector to switch between **HTML**, **SVG**, and **CSS**.
+
+The code generation pipeline lives in `frontend/src/app/util/code_gen/`:
+- `markup_html.cljs` — HTML generation
+- `markup_svg.cljs` — SVG generation
+- `style_css.cljs` — CSS generation (with `style_css_formats.cljs` and `style_css_values.cljs` for value serialisation)
+
+### CSS output
+
+```css
+/* Selected shape: "Primary Button" */
+.primary-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background-color: #0066CC;
+  border-radius: 8px;
+  box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.15);
+  /* typography */
+  font-family: Inter, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #FFFFFF;
+  /* dimensions */
+  width: 160px;
+  height: 48px;
+}
+```
+
+Hover over any value in the CSS panel to copy it to clipboard. Click the copy-all button to copy the full block.
+
+### SVG output
+
+For SVG output, Penpot takes the rendered SVG nodes directly from the viewer's main viewport and formats them. No translation step is required — you get the exact SVG that the browser renders.
+
+```xml
+<svg width="160" height="48" viewBox="0 0 160 48"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow-0">
+      <feDropShadow dx="0" dy="2" stdDeviation="4"
+                    flood-color="#000000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="160" height="48" rx="8" ry="8"
+        fill="#0066CC" filter="url(#shadow-0)"/>
+  <text x="80" y="28" text-anchor="middle"
+        font-family="Inter" font-size="16" font-weight="600"
+        fill="#FFFFFF">
+    Get started
+  </text>
+</svg>
+```
+
+### HTML output
+
+HTML output generates a semantic markup tree with inline styles or class references. The outer frame becomes a `<div>`, child shapes map to appropriate elements (`<p>` for text, `<img>` for images, `<div>` for rectangles), and layout properties become inline CSS.
+
+```html
+<div class="primary-button">
+  <span class="label">Get started</span>
+</div>
+```
+
+<Tabs>
+  <Tab title="HTML + CSS">
+    The HTML tab shows the markup; switch to CSS to get the accompanying styles. Together they give a developer a complete, copy-pasteable starting point.
+  </Tab>
+  <Tab title="SVG">
+    SVG is ideal for icons, illustrations, and any shape that needs to be embedded as a vector asset in the DOM. The output is clean, production-ready SVG.
+  </Tab>
+</Tabs>
+
+## Asset export
+
+Every shape can have one or more **export presets** configured in the Design panel. Export presets are stored in the shape's `exports` array and specify:
+
+- **Format**: PNG, SVG, or PDF
+- **Scale**: 1×, 2×, 3×, or a custom multiplier
+- **Suffix**: appended to the filename (e.g. `@2x`, `-large`)
+
+In Inspect mode, the configured export presets appear at the bottom of the Info panel. Click **Export** next to any preset to download that asset immediately.
+
+<CodeGroup>
+
+```text PNG export
+Shape: "App Icon"
+├── 1× PNG  →  app-icon.png      (64×64 px)
+├── 2× PNG  →  app-icon@2x.png   (128×128 px)
+└── 3× PNG  →  app-icon@3x.png   (192×192 px)
+```
+
+```text SVG export
+Shape: "Logo"
+└── 1× SVG  →  logo.svg
+    (Vector, scales to any resolution)
+```
+
+```text PDF export
+Frame: "Deck Slide 1"
+└── 1× PDF  →  deck-slide-1.pdf
+    (Page-sized, print-ready)
+```
+
+</CodeGroup>
+
+You can also export all frames in a file as a single PDF, or export the entire file as a `.penpot` archive via **File → Export**.
+
+## Navigating the frame tree
+
+In Inspect mode, clicking nested shapes navigates the layer tree. The breadcrumb at the top of the panel shows the full path from the page root to the selected shape. Click any ancestor in the breadcrumb to jump up to that level.
+
+Use the **Show layers** toggle to open the layers panel alongside the code panel — useful when you need to identify a specific shape by name rather than by clicking on the canvas.
+
+## Developer workflow without a Penpot account
+
+Penpot is specifically designed so that developers do not need to install or log in to Penpot to work from a design. A designer shares an Inspect link and a developer can:
+
+1. Open the link in any browser.
+2. Click any shape on the canvas to see its properties.
+3. Switch to the Code tab to copy CSS, SVG, or HTML.
+4. Download any exported asset.
+
+<Tip>
+  Inspect links can be set to **never expire** or given a time limit. For long-lived projects, a permanent link shared with the whole engineering team means developers always have up-to-date designs — no email attachments, no stale PDFs.
+</Tip>

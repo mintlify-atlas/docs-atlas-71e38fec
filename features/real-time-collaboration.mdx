@@ -1,0 +1,149 @@
+---
+title: "Real-Time Collaboration on Design Files"
+sidebarTitle: "Collaboration"
+description: "Collaborate live in Penpot with multiplayer editing, presence cursors, threaded comments, teams, projects, and granular role-based permissions."
+---
+
+Penpot is built for teams. Real-time collaboration is a core feature — not an add-on — and it works whether your Penpot instance is hosted on penpot.app or self-hosted on your own infrastructure. Multiple team members can edit the same file simultaneously, leave comments anchored to specific shapes, and share work externally via view-only or inspect links.
+
+## How real-time collaboration works
+
+Penpot's multiplayer engine is **WebSocket-based**. When you open a file, your browser establishes a persistent WebSocket connection to the backend. All design operations (shape creation, movement, property changes) are sent as serialised change events over that connection. The backend coordinates these events and broadcasts relevant updates to every other client that has the same file open.
+
+Each change event is applied as an **incremental modification** to the shared document state rather than replacing the entire file. This keeps bandwidth low and ensures that two editors working on different parts of the canvas rarely conflict.
+
+<Note>
+  If your Penpot instance is self-hosted, ensure your reverse proxy (nginx, Caddy, etc.) is configured to support WebSocket upgrades (`Upgrade: websocket`, `Connection: Upgrade` headers). Without this, real-time features will fall back to polling.
+</Note>
+
+## Presence cursors
+
+When another user is viewing or editing the same file, their cursor appears on your canvas labelled with their name. This **presence** feature lets you see:
+
+- Where each collaborator's cursor is at any moment.
+- Which shape they have selected (their selection is outlined in their assigned colour).
+- When they are actively typing (the cursor animates).
+
+Presence is ephemeral — it is not stored in the file data and disappears when a user closes the file.
+
+## Multiplayer editing
+
+All editing operations in Penpot are designed to be **non-destructive and composable**. The internal operation model uses a `+changes / -changes` (redo/undo) diff structure, which means:
+
+- Two editors can move different shapes at the same time without conflict.
+- If two editors change the same attribute of the same shape, the last write wins (last-writer-wins semantics for individual attributes).
+- Undo/redo is **per-user local** — undoing your last action does not undo a teammate's concurrent change.
+
+## Comments
+
+Comments in Penpot are threaded, canvas-anchored annotations. Each comment belongs to a **CommentThread** attached to a specific file. Threads are linked to a position on the canvas (and optionally to a specific shape), so they survive canvas panning and zooming.
+
+<Steps>
+  <Step title="Add a comment">
+    Press `C` to enter comment mode, then click anywhere on the canvas to create a new comment thread. Type your message and press `Enter` to post. Teammates receive an in-app notification.
+  </Step>
+  <Step title="Reply to a thread">
+    Click an existing comment pin on the canvas to open the thread. Type in the reply field at the bottom of the thread.
+  </Step>
+  <Step title="Resolve a thread">
+    Click the checkmark icon on a thread to mark it as resolved. Resolved threads are hidden from the canvas but remain accessible via the **Comments** filter panel.
+  </Step>
+  <Step title="Navigate comments">
+    Open the **Comments** panel in the left sidebar to see all threads in the file, filter by resolved/unresolved, and jump to any thread's canvas position.
+  </Step>
+</Steps>
+
+## Teams and projects
+
+Penpot organises work into a three-level hierarchy: **Teams → Projects → Files**.
+
+```
+Team: "Acme Design Team"
+├── Project: "Marketing Site"
+│   ├── File: "Homepage"
+│   ├── File: "Landing Pages"
+│   └── File: "Design System"
+└── Project: "Mobile App"
+    ├── File: "iOS Screens"
+    └── File: "Android Screens"
+```
+
+- A **Team** is the top-level organisational unit. Teams own projects and files, and team membership controls who can access all resources within.
+- A **Project** is a container for related files. Projects can have their own access settings in addition to team-level permissions.
+- A **File** is a single design document with multiple pages, a library of components/tokens/colors, and comment threads.
+
+Files can also act as **shared libraries** — when marked as shared, their components, colors, typographies, and design tokens are available to every other file in the team.
+
+## File sharing
+
+Share any file with people inside or outside your team using **share links**:
+
+1. Click **Share** in the workspace header.
+2. Choose a permission level (View, Comment, Inspect).
+3. Copy the generated link and distribute it.
+
+Share links can be set to never expire or given a custom expiration date. You can revoke a link at any time from the **Shared links** manager (`ShareLink` entities in the data model store the token, URL, and permissions).
+
+## Teams, roles, and permissions
+
+Penpot uses a **role-based access control (RBAC)** model. Every team member has one of the following roles:
+
+<CardGroup cols={2}>
+  <Card title="Owner" icon="crown">
+    Full control over the team, including billing, settings, deleting the team, and managing all members. There is exactly one owner per team. Ownership can be transferred.
+  </Card>
+  <Card title="Admin" icon="shield">
+    Can invite and remove members, change member roles (up to Admin), manage team settings, and create/delete projects and files.
+  </Card>
+  <Card title="Editor" icon="pen">
+    Can create, edit, and delete files within projects they have access to. Cannot manage team members or settings.
+  </Card>
+  <Card title="Viewer" icon="eye">
+    Read-only access. Can view designs, leave comments, and access the Inspect tab on files shared with them. Cannot edit any design content.
+  </Card>
+</CardGroup>
+
+Permissions are inherited from the team level and can be **overridden per project or per file**. For example, a team member who is a **Viewer** at the team level can be granted **Editor** access to a specific project.
+
+<Info>
+  **Penpot Enterprise** adds an **Admin Console** for centralised team and user management across a self-hosted instance, SSO integration (SAML/OIDC), and advanced governance features such as forced permissions and audit logs.
+</Info>
+
+## Webhooks for automation
+
+Penpot fires outbound **webhooks** when collaboration events occur in a team. Configure webhooks at the team level (**Team settings → Webhooks**) by providing a URL that will receive `POST` requests.
+
+Webhook events include:
+
+| Event | When it fires |
+|---|---|
+| `file:created` | A new file is created in a team project |
+| `file:updated` | A file is saved after editing |
+| `file:deleted` | A file is deleted |
+| `comment:created` | A comment is posted on any file in the team |
+| `project:created` | A new project is created |
+| `project:deleted` | A project is deleted |
+
+Payloads are delivered as JSON (default) or [Transit+JSON](https://github.com/cognitect/transit-format). Use webhooks to trigger CI/CD pipelines, design system sync jobs, Slack notifications, or any other automation in your workflow.
+
+```bash
+# Example: verify your webhook is receiving events
+curl -H "Authorization: Token <your-token>" \
+     https://design.penpot.app/api/rpc/command/get-profile
+```
+
+## Access tokens for API integration
+
+Personal **access tokens** let applications authenticate with the Penpot API on your behalf. Generate tokens under **Your account → Access tokens** with an optional expiration (30, 60, 90, or 180 days, or never).
+
+```bash
+# Fetch your profile using an access token
+curl -H "Authorization: Token <your-access-token>" \
+     https://design.penpot.app/api/rpc/command/get-profile
+```
+
+Access tokens enable automation workflows — for example, a CI job that exports updated SVG assets after every file save, or an internal tool that reads design token values from Penpot and writes them to a repository.
+
+<Warning>
+  Treat access tokens like passwords. They grant the same access as your account credentials. Rotate them regularly and revoke any tokens that are no longer needed.
+</Warning>

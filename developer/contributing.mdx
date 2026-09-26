@@ -1,0 +1,258 @@
+---
+title: "Contributing to Penpot: Code, Bugs, and Translations"
+sidebarTitle: "Contributing"
+description: "Learn how to contribute to Penpot: report bugs, submit pull requests, follow commit conventions, add translations, and engage with the community on Discord and GitHub."
+---
+
+Penpot is open source and welcomes contributions from the community. This guide covers how to report bugs, submit code changes, follow the project's conventions, and contribute translations.
+
+## Prerequisites
+
+Penpot is written primarily in **Clojure** (backend), **ClojureScript** (frontend and exporter), and **Rust** (render-wasm). Most contributions require familiarity with the Clojure ecosystem.
+
+- Read the [architecture overview](/developer/architecture) to understand the codebase.
+- Set up the [development environment](/developer/dev-environment) before writing code.
+- Use [GitHub Issues](https://github.com/penpot/penpot/issues) as the public bug tracker.
+
+## AI-Assisted Contributions
+
+Penpot supports the responsible use of AI tools. All contributions — including issues, PRs, and code — must be carefully reviewed and verified by a human before submission. AI-generated content submitted without human review may be rejected without a detailed reply.
+
+## Reporting Bugs
+
+File bugs via [GitHub Issues](https://github.com/penpot/penpot/issues). Search for existing issues first to avoid duplicates.
+
+Include the following when possible:
+
+1. Steps to reproduce the error.
+2. Browser name and version.
+3. DevTools console exception stack trace (if available).
+
+For security bugs, email `support@penpot.app` or file a [GitHub Security Advisory](https://github.com/penpot/penpot/security/advisories). Penpot does not have a formal bug bounty program, but security contributions are recognized in the changelog.
+
+## Pull Requests
+
+### Workflow
+
+<Steps>
+  <Step title="Read and sign the DCO">
+    All code patches must include a `Signed-off-by` line (see the [DCO section](#developers-certificate-of-origin-dco) below). Add it automatically with `git commit -s`.
+  </Step>
+  <Step title="Discuss before building">
+    Open a GitHub Issue before starting work on any new feature or significant change. Do not expect a PR to be accepted if submitted without prior discussion — this applies to new features, planned features, and quick wins alike.
+
+    For bug fixes you may submit directly, but filing an issue first is still recommended.
+  </Step>
+  <Step title="Write and test your code">
+    Follow the coding conventions below. Run the linter and formatter for your module before pushing. See the relevant [module docs](/developer/backend) or the `.serena/memories/` directory for module-specific commands.
+  </Step>
+  <Step title="Submit the PR">
+    Use the [PR title format](#pr-and-commit-title-format) below. Include a clear description, screenshots for UI changes, testing notes, and any breaking change callouts.
+  </Step>
+  <Step title="Address review feedback">
+    Push new commits to address feedback — do **not** force-push during review, as it breaks comment threads. PRs require at least one approval before merge.
+  </Step>
+</Steps>
+
+### Branch Naming
+
+Branch names are not enforced but we recommend:
+
+- `issue-NNNN` — when working from a GitHub issue (e.g. `issue-11525`).
+- Short, hyphen-separated descriptive names otherwise (e.g. `fix-ellipse-icon-typo`, `feat-auto-link-libraries`).
+
+PRs are **squash-merged**, so the branch name does not appear in the commit history. What matters is the PR title.
+
+### PR and Commit Title Format
+
+```
+:emoji: Subject line (imperative, capitalized, no period, ≤70 chars)
+```
+
+### Commit Types
+
+| Emoji | Code | When to use |
+|---|---|---|
+| 🐛 | `:bug:` | Bug fix |
+| ✨ | `:sparkles:` | Improvement or enhancement |
+| 🎉 | `:tada:` | New feature |
+| ♻️ | `:recycle:` | Refactor |
+| 💄 | `:lipstick:` | Cosmetic changes |
+| 🚑 | `:ambulance:` | Critical bug fix |
+| 📚 | `:books:` | Documentation |
+| 🚧 | `:construction:` | Work in progress |
+| 💥 | `:boom:` | Breaking change |
+| 🔧 | `:wrench:` | Configuration update |
+| ⚡ | `:zap:` | Performance improvement |
+| 🐳 | `:whale:` | Docker-related change |
+| 📎 | `:paperclip:` | Other non-relevant changes |
+| ⬆️ | `:arrow_up:` | Dependency update |
+| 🔥 | `:fire:` | Removal of code or files |
+| 🌐 | `:globe_with_meridians:` | Add or update translations |
+| 🚀 | `:rocket:` | Epic or highlight |
+
+### Commit Message Rules
+
+```
+:emoji: Subject line
+
+[Optional body, wrapped at 76 characters.
+Describe the why and any important context.]
+
+[Footer: Signed-off-by, issue references]
+```
+
+- Use the **imperative mood**: "Fix", not "Fixed".
+- Capitalize the first letter.
+- No period at the end.
+- Subject ≤ 70 characters.
+- Body lines ≤ 76 characters (URLs and trailers excepted).
+- Blank line between subject and body.
+
+Validate your commit message locally:
+
+```bash
+./scripts/check-commit
+```
+
+### Commit Examples
+
+```
+:bug: Fix unexpected error on launching modal
+:sparkles: Enable new modal for profile
+:zap: Improve performance of dashboard navigation
+:tada: Add new approach for user registration
+:ambulance: Fix critical bug on user registration process
+```
+
+### PR Description Template
+
+Every PR should answer:
+
+1. **What and why** — describe the change and its motivation.
+2. **Related issues** — use `Closes #1234` or reference a Taiga story.
+3. **Screenshots or recordings** — required for any UI-visible change.
+4. **Testing notes** — how was the change verified? Any edge cases?
+5. **Breaking changes** — anything that requires migration or affects existing users.
+
+### What We Won't Accept
+
+To save everyone's time, avoid PRs that:
+
+- Introduce new dependencies without prior discussion.
+- Change the build system or CI without maintainer approval.
+- Mix unrelated changes in one PR.
+- Include AI-generated code without human review.
+- Skip local lint and format checks.
+- Skip the discussion step for non-bug-fix changes.
+
+<Info>
+Look for the `good first issue` label on GitHub for issues suitable for newcomers.
+</Info>
+
+## Contributing Translations
+
+Penpot uses standard gettext `.po` files stored in `frontend/translations/`. The English and Spanish files are maintained manually by the core team. All other languages are managed on [Weblate](https://weblate.org).
+
+### Adding or editing strings
+
+1. Open the relevant `.po` file (e.g. `frontend/translations/en.po`).
+2. Add or edit the `msgid`/`msgstr` pairs.
+3. Reformat the file before committing:
+
+```bash
+# inside frontend/
+pnpm run translations
+```
+
+4. To enable a newly available language, add it to two places:
+
+```clojure
+;; frontend/src/app/util/i18n.cljs
+(def supported-locales [...your-locale...])
+```
+
+```javascript
+// frontend/gulpfile.js
+const langs = [..., "your-locale"];
+```
+
+5. Commit with the `:globe_with_meridians:` emoji:
+
+```
+:globe_with_meridians: Add Turkish translation strings for dashboard
+```
+
+<Tip>
+If you want to contribute a new language or update an existing one, the easiest path is through [Weblate](https://weblate.org) rather than a direct PR. The core team syncs Weblate changes periodically.
+</Tip>
+
+## Formatting and Linting
+
+Each module has its own commands. Run them before submitting:
+
+<CodeGroup>
+```bash Backend (clj-kondo)
+cd penpot/backend
+clj-kondo --lint src
+```
+
+```bash Frontend (clj-kondo + shadow-cljs)
+cd penpot/frontend
+clj-kondo --lint src
+```
+
+```bash Clojure formatting check
+./scripts/check-fmt-clj
+```
+</CodeGroup>
+
+The CI pipeline runs all checks automatically. A PR cannot merge with failing lint or format checks.
+
+## Changelog
+
+Do **not** edit `CHANGES.md` manually in your PR. The changelog is generated automatically from GitHub milestones during the release process.
+
+## Community
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/penpot/penpot/issues">
+    File bug reports, feature requests, and track public work items.
+  </Card>
+  <Card title="GitHub Discussions" icon="comments" href="https://github.com/penpot/penpot/discussions">
+    Ask questions, share ideas, and discuss architectural decisions.
+  </Card>
+  <Card title="Discord" icon="discord" href="https://discord.gg/penpot">
+    Real-time chat with the community and core team.
+  </Card>
+  <Card title="Taiga" icon="list-check" href="https://tree.taiga.io/project/penpot/">
+    Internal project management. Changelog entries reference Taiga story IDs.
+  </Card>
+</CardGroup>
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant](https://www.contributor-covenant.org/). The full Code of Conduct is at [help.penpot.app/contributing-guide/coc](https://help.penpot.app/contributing-guide/coc/) and in [CODE_OF_CONDUCT.md](https://github.com/penpot/penpot/blob/main/CODE_OF_CONDUCT.md).
+
+Report unacceptable behavior by opening an issue or contacting a project maintainer directly.
+
+## Developer's Certificate of Origin (DCO)
+
+By submitting a code patch you certify that:
+
+- The contribution was created in whole or in part by you, and you have the right to submit it under the project's open source license.
+- Or it is based on previous work covered under an appropriate open source license, and you have the right to modify and submit it under that same license.
+- Or it was provided to you by someone else who certified one of the above.
+- You understand the contribution is public and a record (including your sign-off) is maintained indefinitely.
+
+### Adding the sign-off
+
+```bash
+git commit -s
+```
+
+This appends `Signed-off-by: Your Real Name <your.email@example.com>` to the commit message.
+
+<Warning>
+Use your real name. Pseudonyms and anonymous contributions are not accepted. The `Signed-off-by` line is mandatory on all code patches (documentation is excluded) and must match the commit author.
+</Warning>

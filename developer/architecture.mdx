@@ -1,0 +1,153 @@
+---
+title: "Penpot System Architecture: Services and Data Flow"
+sidebarTitle: "Architecture"
+description: "Explore Penpot's system architecture: ClojureScript SPA frontend, Clojure JVM backend, PostgreSQL, Redis pub/sub, exporter, and the shared common library."
+---
+
+Penpot follows a classic single-page application architecture. A ClojureScript frontend communicates with a Clojure backend over an HTTP RPC API and a persistent WebSocket. Both ends share a common Clojure/ClojureScript library for data structures and business logic, eliminating the need for any cross-language serialization beyond a transit wire encoding.
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | ClojureScript, React (via [rumext](https://github.com/funcool/rumext)) |
+| Backend | Clojure, JVM |
+| Render WASM | Rust (`render-wasm`) |
+| Exporter | ClojureScript, Node.js, Puppeteer |
+| Database | PostgreSQL |
+| Broker | Redis (pub/sub) |
+| Object storage | S3-compatible (RustFS in devenv) |
+
+## System Components
+
+The system has four main runtime processes that cooperate to deliver the full product.
+
+<CardGroup cols={2}>
+  <Card title="Frontend App" icon="browser">
+    The main React/ClojureScript SPA served as static files. Talks to the backend via HTTP RPC calls and a persistent WebSocket for real-time collaboration.
+  </Card>
+  <Card title="Backend App" icon="server">
+    A Clojure/JVM process that owns data persistence, RPC command handling, WebSocket notifications, async task scheduling, and file storage.
+  </Card>
+  <Card title="Exporter" icon="file-export">
+    A ClojureScript/Node.js service that drives a headless Chromium browser (via Puppeteer) to render and export design files as PNG, SVG, or PDF.
+  </Card>
+  <Card title="Worker (Web Worker)" icon="gears">
+    A browser Web Worker that runs expensive CPU tasks — thumbnail generation, geometric snap indexes, file import/export — off the main thread.
+  </Card>
+</CardGroup>
+
+## Communication Patterns
+
+```
+User
+ │  HTTPS
+ ▼
+Frontend App ◄──────────────── WebSocket ────────────────► Backend App
+     │                                                           │
+     │ HTTP RPC (/api/rpc/command/xxx)                          │ SQL
+     ▼                                                           ▼
+Backend App                                                  PostgreSQL
+     │
+     │ pub/sub
+     ▼
+   Redis
+```
+
+### HTTP RPC
+
+All data queries and mutations between the frontend and backend use a custom RPC mechanism.
+
+1. The frontend calls a named command, e.g. `get-file`, and passes a Clojure map of parameters.
+2. Parameters are encoded with [transit](https://github.com/cognitect/transit-clj) (a JSON superset that preserves Clojure types).
+3. The request hits `<backend-host>/api/rpc/command/<name>`.
+4. The backend decodes params, validates them with Malli schemas, and executes the matching `defmethod` handler.
+5. The response is transit-encoded and returned.
+
+Because both ends are Clojure/ClojureScript, no data-type conversion is needed — sets stay sets, keywords stay keywords.
+
+### WebSocket
+
+When a user opens a file, the frontend opens a persistent WebSocket to the backend, keyed to the file ID. The socket carries:
+
+- **Presence events**: connect, disconnect, cursor movement.
+- **Change notifications**: edits from other collaborators, dispatched by the backend's notifications module.
+
+### Redis pub/sub
+
+Backend instances use Redis as a message broker. When a user saves changes to a file, the backend publishes a message to the Redis topic for that file ID. All backend instances subscribed to that topic forward the message to their connected WebSocket clients.
+
+## Monorepo Directory Structure
+
+```text
+penpot/
+├── backend/          # Clojure JVM application
+│   └── src/app/
+│       ├── http/     # HTTP server and routing
+│       ├── rpc/      # RPC command handlers
+│       ├── migrations/  # SQL migration scripts
+│       ├── tasks/    # Async background tasks
+│       └── srepl/    # Interactive REPL helpers
+├── frontend/         # ClojureScript SPA
+│   └── src/app/
+│       ├── main/     # UI components and data events
+│       ├── worker/   # Web Worker code
+│       └── util/     # Generic utilities
+├── common/           # Shared Clojure/ClojureScript code
+│   └── src/app/common/
+│       ├── types/    # Abstract Data Types (shapes, files, pages…)
+│       ├── files/    # File-level operations and migrations
+│       ├── logic/    # High-level business logic
+│       └── geom/     # 2D geometry primitives
+├── exporter/         # ClojureScript/Node.js export service
+├── render-wasm/      # Rust WebAssembly renderer
+└── docker/           # Docker compose files for production and devenv
+```
+
+## The Common Library
+
+One of Penpot's key architectural decisions is a shared `common/` library compiled for both Clojure (backend, JVM) and ClojureScript (frontend, browser). Conditional compilation with `#?(:clj … :cljs …)` handles the small platform differences.
+
+```clojure
+;; Example from common: platform-conditional code
+(defn ordered-set?
+  [o]
+  #?(:cljs (instance? lks/LinkedSet o)
+     :clj  (instance? LinkedSet o)))
+```
+
+The common library contains:
+
+- **`app.common.types`** — Abstract Data Types for every domain entity (shape, page, file, component, design tokens).
+- **`app.common.files`** — File-level operations, change objects (event sourcing), and data migrations.
+- **`app.common.logic`** — High-level, UI-independent business logic (component instantiation, copy/detach, etc.).
+- **`app.common.geom`** — 2D point, matrix, and shape geometry.
+- **`app.common.path`** — SVG path manipulation and shape-to-path conversion.
+
+<Note>
+Because `common/` is compiled into both processes, a bug fix or data model change in this library applies to the frontend and backend simultaneously without any API versioning.
+</Note>
+
+## Abstraction Layers
+
+Code in `common/` is organized in strict horizontal layers. Higher layers may call lower ones, but never the reverse.
+
+```
+Data events (frontend only)
+        ↓
+Business logic  (common/logic/)
+        ↓
+File change objects  (common/files/changes.cljc)
+        ↓
+File operations  (common/files/helpers.cljc)
+        ↓
+Abstract Data Types  (common/types/)
+        ↓
+Basic data structures  (common/data.cljc)
+```
+
+This discipline keeps UI concerns out of the domain model and prevents circular dependencies.
+
+## Deletion and Garbage Collection
+
+The backend never hard-deletes database rows immediately. Every deletion sets a `deleted_at` timestamp; all queries filter out rows where this field is set. A periodic async task (the garbage collector) then permanently removes rows whose `deleted_at` is older than a configured threshold, along with any orphaned media attachments.

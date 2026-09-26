@@ -1,0 +1,257 @@
+---
+title: "Troubleshoot Your Penpot Installation"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose and fix common Penpot self-hosting issues. Learn to read browser devtools, interpret Docker logs, and resolve the most frequent installation problems."
+---
+
+Troubleshooting a Penpot installation requires reading error output carefully and knowing where to look. This guide walks through every diagnostic layer — from the browser console and network tab, through Docker service logs, down to container-level inspection — and covers the most common issues encountered when running a self-hosted Penpot instance. Taking the time to read stack traces pays off: many issues can be resolved without opening a support ticket.
+
+## Browser Diagnostics
+
+Regardless of how Penpot is deployed, the browser is always the first place to look.
+
+### Check Version and Active Flags
+
+Open your Penpot instance in the browser and press **F12** to open DevTools. In the **Console** tab, Penpot prints its exact version number and the active feature flags on startup. Confirm these match what you expect before investigating further.
+
+### Inspect Network Requests
+
+Switch to the **Network** tab in DevTools and reload the page (or reproduce the failing action). Look for requests with `4xx` or `5xx` status codes — clicking on them reveals the full request/response, including any server-side error message returned in the response body.
+
+### Penpot Crash Reports
+
+When Penpot encounters an unhandled error in the frontend, it displays an in-app crash report dialog. This report includes a stack trace and diagnostic information — copy its full content before dismissing it; it is invaluable when filing an issue.
+
+## Docker Logs
+
+If you are running Penpot with Docker Compose, the following commands give you visibility into every service.
+
+### Check Container Status
+
+Confirm all containers are running and healthy:
+
+```bash
+docker compose -p penpot -f docker-compose.yaml ps
+```
+
+Any container in an `Exit` or `Restarting` state needs investigation.
+
+### Tail All Logs
+
+Stream live logs from the entire Penpot stack:
+
+```bash
+docker compose -p penpot -f docker-compose.yaml logs -f
+```
+
+### Tail a Specific Service
+
+When the output is too noisy, narrow it to one service at a time:
+
+<CodeGroup>
+  ```bash Frontend
+  docker compose -p penpot -f docker-compose.yaml logs penpot-frontend -f
+  ```
+
+  ```bash Backend
+  docker compose -p penpot -f docker-compose.yaml logs penpot-backend -f
+  ```
+
+  ```bash Exporter
+  docker compose -p penpot -f docker-compose.yaml logs penpot-exporter -f
+  ```
+
+  ```bash PostgreSQL
+  docker compose -p penpot -f docker-compose.yaml logs penpot-postgres -f
+  ```
+
+  ```bash Valkey
+  docker compose -p penpot -f docker-compose.yaml logs penpot-valkey -f
+  ```
+</CodeGroup>
+
+### Inspect a Container Directly
+
+For lower-level access, use `docker logs` with the full container name:
+
+```bash
+docker logs -f penpot-penpot-backend-1
+```
+
+<Note>
+  Run `docker ps` to find the exact container name — it may be `penpot-penpot-backend-1` or `penpot_penpot-backend-1` depending on your Docker version and platform.
+</Note>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Penpot starts but I can't register an account">
+    **Cause**: Public registration may be disabled via the `disable-registration` flag, or email verification is blocking the flow without a working SMTP server.
+
+    **Fix 1** — If registration is intentionally disabled, create a user via the CLI:
+
+    ```bash
+    docker exec -ti penpot-penpot-backend-1 python3 manage.py create-profile
+    ```
+
+    **Fix 2** — If you want to allow registration without email verification (e.g. for initial setup), add `disable-email-verification` to `PENPOT_FLAGS` in your `docker-compose.yaml` and restart:
+
+    ```bash
+    PENPOT_FLAGS: disable-email-verification enable-smtp enable-prepl-server disable-secure-session-cookies
+    ```
+
+    **Fix 3** — Enable `enable-log-invitation-tokens` to see invitation tokens in stdout when SMTP is unavailable.
+  </Accordion>
+
+  <Accordion title="Login redirects in a loop or session is lost on restart">
+    **Cause**: `PENPOT_SECRET_KEY` is not set or changes between restarts. Without a persistent secret key, all HTTP sessions and invitation tokens are invalidated whenever the backend container restarts.
+
+    **Fix** — Set a stable, randomly generated secret key in your `docker-compose.yaml`:
+
+    ```bash
+    # Generate a key
+    python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+    ```
+
+    ```yaml docker-compose.yaml
+    PENPOT_SECRET_KEY: <paste-generated-key-here>
+    ```
+
+    Restart the backend container after making this change.
+  </Accordion>
+
+  <Accordion title="Clipboard doesn't work / assets don't load correctly">
+    **Cause**: Penpot is being served over plain HTTP on a non-localhost domain. Some browser APIs — including the Clipboard API — are only available in secure contexts (HTTPS or `localhost`).
+
+    **Fix** — Set up a reverse proxy with a valid TLS certificate and serve Penpot over HTTPS. Remove the `disable-secure-session-cookies` flag from `PENPOT_FLAGS` once HTTPS is active.
+
+    See the [Docker deployment guide](/self-hosting/docker#configure-https-and-a-reverse-proxy) for NGINX, Caddy, and Traefik examples.
+  </Accordion>
+
+  <Accordion title="Email invitations are not being received">
+    **Cause**: SMTP is not configured or the `enable-smtp` flag is missing. By default, Penpot prints email content to stdout instead of sending it.
+
+    **Fix** — Add `enable-smtp` to `PENPOT_FLAGS` and set the SMTP environment variables in your backend service:
+
+    ```bash
+    PENPOT_FLAGS: [...] enable-smtp
+
+    PENPOT_SMTP_HOST: smtp.mycompany.com
+    PENPOT_SMTP_PORT: 587
+    PENPOT_SMTP_USERNAME: <username>
+    PENPOT_SMTP_PASSWORD: <password>
+    PENPOT_SMTP_TLS: true
+    PENPOT_SMTP_DEFAULT_FROM: no-reply@mycompany.com
+    PENPOT_SMTP_DEFAULT_REPLY_TO: no-reply@mycompany.com
+    ```
+
+    During development, use Mailpit (included in the default compose file) to catch all outgoing emails at `http://localhost:8025`.
+  </Accordion>
+
+  <Accordion title="Frontend loads but API requests fail (502/503 errors)">
+    **Cause**: The backend container is not running, hasn't finished starting up, or the `PENPOT_BACKEND_URI` in the frontend service points to the wrong host.
+
+    **Fix 1** — Check backend container status and logs:
+
+    ```bash
+    docker compose -p penpot -f docker-compose.yaml ps
+    docker compose -p penpot -f docker-compose.yaml logs penpot-backend -f
+    ```
+
+    **Fix 2** — Verify `PENPOT_PUBLIC_URI` is set to the correct publicly reachable URL in both frontend and backend services. It must match what users type in their browser.
+
+    **Fix 3** — Wait for the backend to fully initialize. On first launch with a large dataset, database migrations can take several minutes.
+  </Accordion>
+
+  <Accordion title="Containers keep restarting after upgrading">
+    **Cause**: A required environment variable or service definition is missing after an upgrade (e.g. the `penpot-admin-console` service introduced in 2.18).
+
+    **Fix** — Review the upgrade notes for your target version in the [Docker guide](/self-hosting/docker#update-penpot). Then check the backend logs for the specific error:
+
+    ```bash
+    docker compose -p penpot -f docker-compose.yaml logs penpot-backend --tail=100
+    ```
+
+    If upgrading across many versions at once, consider upgrading incrementally through each major version.
+  </Accordion>
+
+  <Accordion title="v2 migration is slow or fails on startup">
+    **Cause**: The automatic v2 migration (triggered when upgrading from 1.x to 2.0) processes every file in the database. For large instances, this can take significant time or encounter an error.
+
+    **Fix** — Disable the automatic migration and run it manually:
+
+    1. Add `disable-v2-migration` to `PENPOT_FLAGS` and restart.
+    2. Run the migration script manually against the backend container:
+
+    ```bash
+    docker exec -ti <container-name-or-id> ./run.sh app.migrations.v2
+    ```
+
+    3. Once complete, remove the `disable-v2-migration` flag and restart.
+
+    <Warning>
+      This migration script applies **only** when upgrading from 1.19.x to 2.0.x. Do not run it on Penpot 2.1 or later — it has been removed since 2.4.3.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="OIDC / SSO login fails with a redirect or token error">
+    **Cause**: In containerized deployments, the OIDC provider's public (browser-facing) URL and internal (backend-facing) URL are often different. If the backend tries to reach the provider at a public URL that is not resolvable from inside the container network, token exchange fails.
+
+    **Fix** — Override the OIDC endpoint URIs explicitly in the backend:
+
+    ```bash
+    PENPOT_OIDC_AUTH_URI: https://provider.example.com/auth
+    PENPOT_OIDC_TOKEN_URI: http://internal-provider/token
+    PENPOT_OIDC_USER_URI: http://internal-provider/userinfo
+    PENPOT_OIDC_JWKS_URI: http://internal-provider/.well-known/jwks.json
+    ```
+
+    If the backend must reach a hostname blocked by SSRF protection, add it to the allowlist:
+
+    ```bash
+    PENPOT_SSRF_ALLOWED_HOSTS: "internal-provider public-provider"
+    ```
+  </Accordion>
+
+  <Accordion title="Assets or uploaded images are missing after restart">
+    **Cause**: User-uploaded assets are stored in a Docker volume (`penpot_assets`). If the volume is deleted, or if the backend is pointed at a different storage path, assets become unreachable.
+
+    **Fix** — Verify the volume is mounted correctly:
+
+    ```bash
+    docker volume ls | grep penpot
+    docker inspect penpot_assets
+    ```
+
+    Ensure `PENPOT_OBJECTS_STORAGE_FS_DIRECTORY` in the backend matches the volume mount path (`/opt/data/assets` by default) and that the same volume is mounted on both the frontend and backend services.
+  </Accordion>
+
+  <Accordion title="Port 9001 is already in use">
+    **Cause**: Another process on your host is listening on port 9001.
+
+    **Fix** — Find the conflicting process and stop it, or change the host port in `docker-compose.yaml`:
+
+    ```yaml docker-compose.yaml
+    penpot-frontend:
+      ports:
+        - "9002:8080"   # change 9001 to any free port
+    ```
+
+    Update `PENPOT_PUBLIC_URI` to match the new port if you're running on localhost.
+  </Accordion>
+</AccordionGroup>
+
+## Getting More Help
+
+If the steps above don't resolve your issue:
+
+1. **Search the community forum** — [community.penpot.app/c/technical/8](https://community.penpot.app/c/technical/8) — many issues have already been discussed and solved there.
+2. **Open a GitHub issue** — [github.com/penpot/penpot/issues](https://github.com/penpot/penpot/issues) — include the Penpot version (from the browser console), the relevant log output, and the steps to reproduce.
+3. **Email support** — [support@penpot.app](mailto:support@penpot.app) — for Enterprise customers and Elestio deployments.
+
+When filing an issue, always include:
+- Penpot version (visible in the browser console)
+- Deployment method (Docker Compose, Helm, Elestio, other)
+- Active `PENPOT_FLAGS` value (redact secrets)
+- Relevant log output from `docker compose logs`
+- Browser and OS version

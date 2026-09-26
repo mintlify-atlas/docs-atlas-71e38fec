@@ -1,0 +1,314 @@
+---
+title: "Penpot Plugin API: UI and Messaging"
+sidebarTitle: "UI & Messaging"
+description: "Open a plugin UI panel, resize it, and pass messages back and forth between plugin.ts and your iframe — complete reference with working examples."
+---
+
+Most Penpot plugins have two layers: the **plugin logic** (`plugin.ts`) that runs in a privileged worker context with access to the `penpot` global, and a **plugin UI** that runs inside a sandboxed `<iframe>`. The `penpot.ui` namespace bridges these two layers through a structured message-passing API.
+
+<Note>
+  It is perfectly valid to write a plugin **without** a UI. Headless plugins call `penpot.ui.open(...)` with the `hidden: true` flag, or skip the UI call entirely, if they only need to manipulate canvas shapes programmatically.
+</Note>
+
+---
+
+## `penpot.ui`
+
+The `penpot.ui` object is always available on the global `penpot` object. It exposes five members:
+
+| Member | Kind | Purpose |
+|--------|------|---------|
+| `open` | method | Launch (or re-open) the UI panel |
+| `size` | property | Current dimensions of the panel, or `null` |
+| `resize` | method | Change the panel dimensions at runtime |
+| `sendMessage` | method | Send data **from** plugin.ts **to** the UI |
+| `onMessage` | method | Register a callback **in** plugin.ts **for** messages sent **from** the UI |
+
+---
+
+## `penpot.ui.open(name, url, options?)`
+
+Opens the plugin's UI modal. Calling `open` a second time while the panel is already visible has no effect — use `resize` to change its size instead.
+
+<ParamField body="name" type="string" required>
+  The title displayed in the modal header bar.
+</ParamField>
+
+<ParamField body="url" type="string" required>
+  The URL of the HTML file to load in the iframe. Typically a relative path like `index.html` that is bundled with your plugin.
+</ParamField>
+
+<ParamField body="options" type="object">
+  <Expandable title="options properties">
+    <ParamField body="width" type="number" required>
+      Initial width of the modal in pixels. Penpot enforces minimum and maximum limits.
+    </ParamField>
+    <ParamField body="height" type="number" required>
+      Initial height of the modal in pixels.
+    </ParamField>
+    <ParamField body="hidden" type="boolean">
+      When `true`, the plugin initialises but the modal is **not** shown. Useful for headless plugins that need to send an initial message before revealing their UI.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+```ts
+// plugin.ts – basic usage
+penpot.ui.open('My Plugin', 'index.html', { width: 320, height: 480 });
+```
+
+```ts
+// plugin.ts – open hidden, do work, then show
+penpot.ui.open('My Plugin', 'index.html', {
+  width: 320,
+  height: 480,
+  hidden: true,
+});
+
+// Compute something first…
+const shapes = penpot.selection;
+penpot.ui.sendMessage({ type: 'init', shapeCount: shapes.length });
+
+// The UI can now reveal itself via a postMessage back to the plugin.
+```
+
+---
+
+## `penpot.ui.size`
+
+A read-only property that returns the current dimensions of the open panel, or `null` if the UI has not been opened.
+
+<ResponseField name="size" type="{ width: number; height: number } | null">
+  Current panel dimensions.
+</ResponseField>
+
+```ts
+const size = penpot.ui.size;
+if (size) {
+  console.log(`Panel is ${size.width} × ${size.height} px`);
+} else {
+  console.log('UI is not open yet');
+}
+```
+
+---
+
+## `penpot.ui.resize(width, height)`
+
+Programmatically resize the open panel. Call this from `plugin.ts` whenever your UI content changes size (e.g. after showing/hiding a section).
+
+<ParamField body="width" type="number" required>
+  New width in pixels.
+</ParamField>
+
+<ParamField body="height" type="number" required>
+  New height in pixels.
+</ParamField>
+
+```ts
+// plugin.ts
+penpot.ui.resize(480, 640);
+```
+
+<Tip>
+  You can also trigger a resize from the **UI side** by sending a message to `plugin.ts`:
+
+  ```ts
+  // ui.js — inside the iframe
+  window.parent.postMessage({ type: 'resize', width: 480, height: 640 }, '*');
+
+  // plugin.ts
+  penpot.ui.onMessage<{ type: string; width: number; height: number }>((msg) => {
+    if (msg.type === 'resize') {
+      penpot.ui.resize(msg.width, msg.height);
+    }
+  });
+  ```
+</Tip>
+
+---
+
+## `penpot.ui.sendMessage(message, throwOnError?)`
+
+Sends a value from `plugin.ts` to the UI iframe. The message is serialised with the [structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), so it supports objects, arrays, `Map`, `Set`, and typed arrays — but **not** functions or DOM nodes.
+
+<ParamField body="message" type="unknown" required>
+  Any structured-cloneable value. Convention is to use a plain object with a `type` discriminant string.
+</ParamField>
+
+<ParamField body="throwOnError" type="boolean">
+  When `true`, throws an error if the message cannot be cloned (instead of logging to the console). Default: `false`.
+</ParamField>
+
+```ts
+// plugin.ts – send the current selection summary to the UI
+const shapes = penpot.selection;
+penpot.ui.sendMessage({
+  type: 'selection-update',
+  count: shapes.length,
+  names: shapes.map(s => s.name),
+});
+```
+
+---
+
+## `penpot.ui.onMessage<T>(callback)`
+
+Registers a listener in `plugin.ts` for messages sent **from** the UI iframe via `window.parent.postMessage(...)`.
+
+<ParamField body="callback" type="(message: T) => void" required>
+  Called every time the UI sends a message. The generic parameter `T` lets you type the expected message shape.
+</ParamField>
+
+```ts
+// plugin.ts
+penpot.ui.onMessage<{ type: string; color: string }>((msg) => {
+  if (msg.type === 'apply-fill') {
+    for (const shape of penpot.selection) {
+      if ('fills' in shape) {
+        shape.fills = [{ fillColor: msg.color }];
+      }
+    }
+  }
+});
+```
+
+---
+
+## Round-trip communication pattern
+
+The standard pattern is:
+
+1. **`plugin.ts`** opens the UI and immediately sends initialization data.
+2. **UI** renders and, when the user takes an action, posts a message back.
+3. **`plugin.ts`** receives the message, modifies the canvas, and sends a confirmation.
+
+<CodeGroup>
+```ts plugin.ts
+// 1. Open the UI
+penpot.ui.open('Color Applicator', 'index.html', { width: 280, height: 400 });
+
+// 2. Send initial data
+const sendState = () => {
+  const shapes = penpot.selection;
+  penpot.ui.sendMessage({
+    type: 'state',
+    selectedCount: shapes.length,
+    theme: penpot.theme,
+  });
+};
+
+sendState();
+
+// 3. Keep UI updated when selection changes
+penpot.on('selectionchange', () => sendState());
+
+// 4. Handle messages from the UI
+penpot.ui.onMessage<{ type: string; color: string }>((msg) => {
+  if (msg.type === 'apply-color') {
+    const blockId = penpot.history.undoBlockBegin();
+    for (const shape of penpot.selection) {
+      if ('fills' in shape && Array.isArray(shape.fills)) {
+        shape.fills = [{ fillColor: msg.color, fillOpacity: 1 }];
+      }
+    }
+    penpot.history.undoBlockFinish(blockId);
+
+    // Confirm back to the UI
+    penpot.ui.sendMessage({ type: 'done', color: msg.color });
+  }
+
+  if (msg.type === 'close') {
+    penpot.closePlugin();
+  }
+});
+```
+
+```html index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Color Applicator</title>
+</head>
+<body>
+  <p id="info">Loading…</p>
+  <input type="color" id="color-picker" value="#007AFF" />
+  <button id="apply">Apply to selection</button>
+  <button id="close">Close</button>
+
+  <script>
+    const info   = document.getElementById('info');
+    const picker = document.getElementById('color-picker');
+
+    // Listen for messages FROM plugin.ts
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+
+      if (msg.type === 'state') {
+        info.textContent = `${msg.selectedCount} shape(s) selected`;
+        document.body.dataset.theme = msg.theme; // apply dark/light class
+      }
+
+      if (msg.type === 'done') {
+        info.textContent = `Applied ${msg.color} ✓`;
+      }
+    });
+
+    // Send messages TO plugin.ts
+    document.getElementById('apply').addEventListener('click', () => {
+      window.parent.postMessage(
+        { type: 'apply-color', color: picker.value },
+        '*'
+      );
+    });
+
+    document.getElementById('close').addEventListener('click', () => {
+      window.parent.postMessage({ type: 'close' }, '*');
+    });
+  </script>
+</body>
+</html>
+```
+</CodeGroup>
+
+---
+
+## Sending messages from the UI
+
+Inside the UI iframe, use the standard browser API to send messages back to the plugin worker:
+
+```js
+// ui.js or index.html <script>
+window.parent.postMessage(
+  { type: 'my-action', payload: { value: 42 } },
+  '*'  // origin — use '*' because the exact origin may vary
+);
+```
+
+`plugin.ts` will receive this via its `penpot.ui.onMessage` callback.
+
+---
+
+## Headless (no-UI) plugins
+
+If your plugin doesn't need a visible panel, simply omit the `penpot.ui.open()` call or pass `hidden: true`. The plugin worker still runs and can read/write shapes, listen to events, and close itself when done.
+
+```ts
+// plugin.ts – headless example: rename all boards on the page
+const shapes = penpot.currentPage?.findShapes({ type: 'board' }) ?? [];
+shapes.forEach((s, i) => { s.name = `Screen ${i + 1}`; });
+penpot.closePlugin();
+```
+
+---
+
+## Error handling
+
+<Warning>
+  If `sendMessage` is called with a value that cannot be serialised by the structured clone algorithm (e.g. a function or a DOM element), it will silently log an error to the console by default. Pass `true` as the second argument to throw instead:
+
+  ```ts
+  penpot.ui.sendMessage(unserializableValue, true); // throws on error
+  ```
+</Warning>

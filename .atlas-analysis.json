@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Penpot",
+  "projectType": "saas",
+  "projectName": "Penpot",
+  "projectDescription": "Penpot is the open-source, self-hostable design platform for product teams, offering real-time collaboration, design tokens, a plugin system, an MCP server, and a REST/webhook API.",
   "theme": "willow",
-  "colors": {
-    "primary": "#141434",
-    "light": "#ffffff",
-    "dark": "#141434"
-  },
-  "favicon": "https://icons.duckduckgo.com/ip3/penpot.app.ico",
-  "logo": {
-    "light": "https://media.brand.dev/e41b16b2-d4ec-423e-bc9e-8be0e5029a08.svg",
-    "dark": "https://media.brand.dev/cebf91b9-1d16-4246-b9a0-c4876f357dac.png"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/penpot/penpot"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/penpot/penpot"
-    }
-  },
+  "primaryColor": "#141434",
+  "lightColor": "#ffffff",
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -117,5 +100,33 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Self-hostable with Docker, Kubernetes, or Elestio",
+    "Real-time collaboration on design files",
+    "Native Design Tokens with single source of truth",
+    "Components and Variants for scalable design systems",
+    "CSS Grid and Flex responsive layout support",
+    "Inspect mode with SVG, CSS, and HTML code output",
+    "Plugin system with TypeScript API",
+    "MCP server for AI-driven design/code workflows",
+    "Webhooks and REST API via access tokens",
+    "Open standards: SVG, CSS, HTML, JSON file formats",
+    "Enterprise plan with SSO, admin console, advanced permissions"
+  ],
+  "publicApiSurface": [
+    "REST RPC API (POST /api/rpc/command/<name>)",
+    "Webhook events: file created/updated, comment added, team events",
+    "Access token authentication header",
+    "Plugin API: penpot.ui.open(), penpot.ui.sendMessage(), penpot.ui.onMessage()",
+    "Plugin API: penpot.currentPage, penpot.selection, penpot.viewport",
+    "Plugin API: Shape types (Frame, Group, Path, Text, Image, etc.)",
+    "Plugin API: penpot.addListener() / penpot.removeListener() for events",
+    "MCP server tools: read/write design file structure via natural language",
+    "@penpot/plugin-types TypeScript package",
+    "@penpot/plugin-styles CSS package",
+    "Docker Compose deployment (docker-compose.yaml)",
+    "PENPOT_FLAGS environment variable for feature toggles",
+    "PENPOT_* environment variables for backend configuration"
+  ]
 }

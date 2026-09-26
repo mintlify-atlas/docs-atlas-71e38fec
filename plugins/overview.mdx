@@ -1,0 +1,210 @@
+---
+title: "Penpot Plugin System: Extend the Design Workspace"
+sidebarTitle: "Overview"
+description: "Learn how the Penpot plugin system works, its iframe-based architecture, the penpot global object, npm packages, and available permissions."
+---
+
+Penpot plugins let you extend the design workspace without touching Penpot's core codebase. You can automate repetitive tasks, integrate external APIs, generate content, manage design tokens, and build entirely new features — all using standard web technologies you already know: JavaScript, HTML, and CSS. Because plugins run as independent modules, you can use any framework (React, Vue, Angular, Svelte, or none at all) and host them wherever you like.
+
+## How plugins work
+
+Every Penpot plugin is loaded inside a sandboxed **iframe** that appears in a modal panel within the workspace. Penpot creates a lightweight web component that reads your `manifest.json`, sets up a secure sandbox (using [SES — Secure ECMAScript](https://github.com/endojs/endo/tree/master/packages/ses)), exposes the `penpot` global object to your plugin logic, and then renders your UI in an iframe.
+
+```
+Penpot App
+  └── WebComponent (sandbox)
+        ├── Runs plugin.ts / plugin.js   ← penpot global is available here
+        └── Renders iframe               ← your HTML/CSS/JS UI lives here
+              ↕ postMessage (two-way)
+```
+
+Your plugin code (`plugin.ts`) talks to the Penpot API through the `penpot` global. Your UI (the iframe) communicates back and forth with `plugin.ts` through standard browser `postMessage` / `window.addEventListener('message', ...)` events.
+
+<Note>
+  The `penpot` global object is **only** available in `plugin.ts` (your plugin logic file). Never try to access it from your iframe's UI scripts.
+</Note>
+
+## Plugin anatomy
+
+A plugin has two main parts:
+
+| Part | File(s) | Role |
+|---|---|---|
+| **Plugin logic** | `plugin.ts` → compiled to `plugin.js` | Calls the Penpot API, reads/writes shapes, sends messages to the UI |
+| **Plugin UI** | `index.html` + any JS framework | Renders controls, receives data from `plugin.ts`, sends user actions back |
+| **Manifest** | `manifest.json` | Declares plugin metadata, entry point, icon, and required permissions |
+
+### The `manifest.json` file
+
+The manifest is the entry point Penpot uses to install your plugin. It must be publicly reachable over HTTPS.
+
+```json
+{
+  "name": "Your plugin name",
+  "description": "A short description shown in the plugin manager",
+  "version": 2,
+  "code": "plugin.js",
+  "icon": "icon.png",
+  "permissions": [
+    "content:read",
+    "content:write",
+    "library:read",
+    "library:write",
+    "user:read",
+    "comment:read",
+    "comment:write",
+    "allow:downloads",
+    "allow:localstorage"
+  ]
+}
+```
+
+<Tip>
+  Set `"version": 2` whenever `code` and `icon` are relative paths. Version 2 resolves those assets relative to the manifest's own URL. If omitted, Penpot treats the manifest as version 1 and expects absolute URLs.
+</Tip>
+
+### The `penpot` global object
+
+Inside `plugin.ts` you have access to the `penpot` global (typed by `@penpot/plugin-types`). The most commonly used namespaces are:
+
+| Namespace / property | What it gives you |
+|---|---|
+| `penpot.ui.open(name, url, options?)` | Opens the plugin modal with your UI |
+| `penpot.ui.sendMessage(message)` | Sends a message from plugin logic → UI iframe |
+| `penpot.ui.onMessage(callback)` | Listens for messages sent from the UI → plugin logic |
+| `penpot.ui.resize(width, height)` | Resizes the plugin modal |
+| `penpot.selection` | Array of currently selected shapes |
+| `penpot.currentPage` | The active page object |
+| `penpot.viewport` | Viewport state (center, zoom, bounds) |
+| `penpot.library` | Local and shared library access |
+| `penpot.theme` | Current Penpot theme (`"dark"` or `"light"`) |
+| `penpot.on(event, callback)` | Subscribe to workspace events |
+| `penpot.off(listenerId)` | Unsubscribe from a workspace event |
+| `penpot.closePlugin()` | Programmatically close the plugin |
+| `penpot.history` | Undo block management |
+
+#### Workspace events
+
+`penpot.on()` supports the following event types:
+
+- `pagechange` — fires when the active page changes
+- `selectionchange` — fires when the user's selection changes (receives array of shape IDs)
+- `shapechange` — fires when a specific observed shape changes
+- `themechange` — fires when the user switches between dark and light theme
+- `filechange` — fires when a different file is opened
+- `contentsave` — fires after the file content is saved to the backend
+- `finish` — fires when the current file is closed
+
+```ts
+// Listen for selection changes
+penpot.on('selectionchange', (ids) => {
+  console.log('Selected shape IDs:', ids);
+});
+
+// Listen for theme changes and forward to the UI
+penpot.on('themechange', (theme) => {
+  penpot.ui.sendMessage({ type: 'theme', content: theme });
+});
+```
+
+## The two npm packages
+
+Penpot publishes two packages to help you build plugins:
+
+### `@penpot/plugin-types`
+
+Provides TypeScript type definitions for the entire Penpot Plugin API. Install it in any project to get full autocompletion and inline documentation in your IDE.
+
+```bash
+npm install @penpot/plugin-types
+```
+
+After installing, add it to your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "typeRoots": ["./node_modules/@types", "./node_modules/@penpot"],
+    "types": ["plugin-types"]
+  }
+}
+```
+
+### `@penpot/plugin-styles`
+
+A CSS library that mirrors Penpot's own design system — buttons, inputs, selects, checkboxes, typography, and dark/light theme tokens. Using it makes your plugin feel native inside Penpot.
+
+```bash
+npm install @penpot/plugin-styles
+```
+
+```css
+/* In your global CSS file */
+@import "@penpot/plugin-styles/styles.css";
+```
+
+Browse all available components at [styles-doc.plugins.penpot.app](https://styles-doc.plugins.penpot.app).
+
+<Tip>
+  For icons inside your plugin UI, Penpot recommends [Feather Icons](https://feathericons.com/) to stay consistent with Penpot's own visual language.
+</Tip>
+
+## Permissions
+
+Plugins declare the permissions they need in `manifest.json`. Penpot enforces these at the API level — undeclared permissions will not be granted even if the code tries to use them.
+
+| Permission | What it unlocks |
+|---|---|
+| `content:read` | Read shapes, pages, and design elements |
+| `content:write` | Create, update, and delete shapes and elements (includes `content:read`) |
+| `library:read` | Read shared library components and assets |
+| `library:write` | Add, update, or remove library assets (includes `library:read`) |
+| `user:read` | Read user profile and active-user information |
+| `comment:read` | Read comments and annotations |
+| `comment:write` | Create, reply to, and delete comments (includes `comment:read`) |
+| `allow:downloads` | Download the full project file |
+| `allow:localstorage` | Persist data using a local-storage proxy (visible to the user in the browser) |
+
+<Note>
+  Write permissions automatically include their corresponding read permission. Declaring `content:write` alone is sufficient — you do not need to also declare `content:read`.
+</Note>
+
+## Hosting and deployment
+
+Plugins are hosted **outside** Penpot. You build and deploy your plugin to any static hosting service (Netlify, Cloudflare Pages, Surge, GitHub Pages, etc.) and then give Penpot the URL to your `manifest.json`. During development you can serve locally — `http://localhost:XXXX/manifest.json` works fine with `https://penpot.app`.
+
+<Warning>
+  Make sure your plugin server sends a permissive `Access-Control-Allow-Origin: *` header, or Penpot won't be able to load the manifest and plugin files.
+</Warning>
+
+## Example plugins
+
+The following community plugins are already available. Install any of them by pasting the manifest URL into the Plugin Manager:
+
+| Plugin | Manifest URL |
+|---|---|
+| Color palette | `https://create-palette.plugins.penpot.app/assets/manifest.json` |
+| Contrast checker | `https://contrast.plugins.penpot.app/assets/manifest.json` |
+| Feather icons | `https://icons.plugins.penpot.app/assets/manifest.json` |
+| Lorem ipsum | `https://lorem-ipsum.plugins.penpot.app/assets/manifest.json` |
+| Rename layers | `https://rename-layers.plugins.penpot.app/assets/manifest.json` |
+| Tables | `https://table.plugins.penpot.app/assets/manifest.json` |
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/plugins/quickstart">
+    Build and load your first plugin in 5 minutes using the official starter template.
+  </Card>
+  <Card title="Create a Plugin" icon="code" href="/plugins/create-plugin">
+    Full walkthrough for building a plugin from scratch with Angular, React, Vue, or Svelte.
+  </Card>
+  <Card title="Plugin API Reference" icon="book" href="https://doc.plugins.penpot.app">
+    Complete TypeScript API documentation for all Penpot interfaces and methods.
+  </Card>
+  <Card title="Plugin Styles" icon="palette" href="https://styles-doc.plugins.penpot.app">
+    Interactive documentation for every component in @penpot/plugin-styles.
+  </Card>
+</CardGroup>

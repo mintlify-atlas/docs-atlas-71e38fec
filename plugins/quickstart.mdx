@@ -1,0 +1,233 @@
+---
+title: "Build Your First Penpot Plugin in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Use the official Penpot plugin starter template to scaffold, configure, and load your first plugin into the Penpot workspace in minutes."
+---
+
+The fastest way to get a working Penpot plugin is to use the **official starter template**. It ships with TypeScript, Vite, a ready-made `manifest.json`, and a minimal `plugin.ts` that you can extend immediately. By the end of this guide you will have a running plugin installed in your Penpot workspace.
+
+## Prerequisites
+
+Before you start, make sure you have:
+
+- [Node.js](https://nodejs.org/en/learn/getting-started/how-to-install-nodejs) (v22 or later recommended) and npm installed
+- A Penpot account — use [penpot.app](https://penpot.app) or a self-hosted instance
+- Basic familiarity with TypeScript and the terminal
+
+## Steps
+
+<Steps>
+
+### Clone the starter template
+
+The [penpot-plugin-starter-template](https://github.com/penpot/penpot-plugin-starter-template) repository is the official scaffold for new plugins.
+
+```bash
+git clone https://github.com/penpot/penpot-plugin-starter-template.git my-plugin
+cd my-plugin
+```
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+This installs Vite, TypeScript, and both Penpot npm packages:
+
+- **`@penpot/plugin-types`** — TypeScript typings for the full Penpot Plugin API
+- **`@penpot/plugin-styles`** — CSS design-system library to match Penpot's look and feel
+
+### Understand the project structure
+
+After installation the relevant files look like this:
+
+```
+my-plugin/
+├── public/
+│   ├── manifest.json      ← plugin metadata Penpot reads at install time
+│   └── icon.png           ← displayed in the Plugin Manager modal (56×56 px recommended)
+├── src/
+│   ├── plugin.ts          ← plugin logic; the only place the `penpot` global is available
+│   ├── main.ts            ← UI entry point (runs inside the iframe)
+│   └── index.html         ← UI markup
+├── vite.config.ts
+└── tsconfig.json
+```
+
+### Review the manifest
+
+Open `public/manifest.json`. It tells Penpot everything it needs to install your plugin:
+
+```json
+{
+  "name": "My Plugin",
+  "description": "A starter plugin for Penpot",
+  "version": 2,
+  "code": "plugin.js",
+  "icon": "icon.png",
+  "permissions": [
+    "content:read",
+    "content:write"
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | Shown in the Plugin Manager modal |
+| `description` | Short summary shown beneath the name |
+| `version` | Set to `2` so relative `code` and `icon` paths resolve from the manifest URL |
+| `code` | Path to the compiled plugin logic file |
+| `icon` | Path to the plugin icon (any image format; 56×56 px recommended) |
+| `permissions` | Array of permissions your plugin needs (see [Permissions](/plugins/overview#permissions)) |
+
+<Tip>
+  Only request the permissions your plugin actually needs. Users can see which permissions a plugin requests before they install it.
+</Tip>
+
+### Explore the plugin logic file
+
+Open `src/plugin.ts`. The starter includes a minimal example that opens the UI and reads the current selection:
+
+```ts
+penpot.ui.open('My Plugin', '', {
+  width: 400,
+  height: 600,
+});
+
+// Listen for messages from the UI iframe
+penpot.ui.onMessage<{ type: string }>((message) => {
+  if (message.type === 'get-selection') {
+    // Send the selected shapes back to the UI
+    penpot.ui.sendMessage({
+      type: 'selection',
+      shapes: penpot.selection.map((shape) => ({
+        id: shape.id,
+        name: shape.name,
+        type: shape.type,
+      })),
+    });
+  }
+});
+```
+
+<Note>
+  The `penpot` global is **only available in `plugin.ts`**. It is not accessible inside your iframe UI scripts. Use `penpot.ui.sendMessage` and `window.addEventListener('message', ...)` to pass data between the two sides.
+</Note>
+
+### Explore the UI side
+
+Open `src/main.ts` (or `src/index.html`) to see the UI entry point. The starter wires up a button that asks the plugin logic for the current selection:
+
+```ts
+// Request current selection when the button is clicked
+document.querySelector('#get-selection')?.addEventListener('click', () => {
+  parent.postMessage({ type: 'get-selection' }, '*');
+});
+
+// Receive data from plugin.ts
+window.addEventListener('message', (event) => {
+  if (event.source !== window.parent) return;
+
+  const message = event.data;
+
+  if (message.type === 'selection') {
+    console.log('Current selection:', message.shapes);
+  }
+});
+```
+
+### Serve the plugin locally
+
+Start the development server with hot-module reloading. Vite is configured to compile `plugin.ts` into `plugin.js` and serve both from the same origin:
+
+```bash
+npm run dev
+```
+
+The terminal will print a local URL such as `http://localhost:4200`. Verify these two URLs are accessible in your browser before continuing:
+
+- `http://localhost:4200/manifest.json`
+- `http://localhost:4200/plugin.js`
+
+### Load the plugin in Penpot
+
+Open any Penpot project in the workspace and open the **Plugin Manager** using one of these methods:
+
+<Tabs>
+  <Tab title="Keyboard shortcut">
+    | Platform | Shortcut |
+    |---|---|
+    | Linux / Windows | <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>P</kbd> |
+    | macOS | <kbd>⌘</kbd> + <kbd>Alt</kbd> + <kbd>P</kbd> |
+  </Tab>
+  <Tab title="Main menu">
+    Click the **Penpot logo** in the top-left corner of the workspace, then select **Plugin manager** from the dropdown menu.
+  </Tab>
+  <Tab title="Toolbar">
+    Click the **plug icon** in the left toolbar of the workspace.
+  </Tab>
+</Tabs>
+
+In the Plugin Manager dialog, paste the manifest URL:
+
+```
+http://localhost:4200/manifest.json
+```
+
+Click **Install**. If everything is set up correctly, the plugin will appear in the Plugin Manager and you can open it immediately.
+
+<Warning>
+  If you see a CORS error, add an `Access-Control-Allow-Origin: *` header to your development server. With Vite you can add a `_headers` file to the `public/` directory:
+  ```
+  /*
+    Access-Control-Allow-Origin: *
+  ```
+</Warning>
+
+### Test your plugin
+
+With the plugin open in the workspace:
+
+1. Select one or more shapes on the canvas
+2. Click the **Get Selection** button in your plugin UI
+3. Open the browser console — you should see the selected shape data logged
+
+</Steps>
+
+## What's next?
+
+You now have a fully working Penpot plugin running locally. Here are some directions to explore:
+
+<CardGroup cols={2}>
+  <Card title="Create a Plugin from Scratch" icon="hammer" href="/plugins/create-plugin">
+    Learn to scaffold a plugin with Angular, React, Vue, or Svelte from an empty project.
+  </Card>
+  <Card title="Plugin API Reference" icon="book" href="https://doc.plugins.penpot.app">
+    Browse every interface and method available through the `penpot` global object.
+  </Card>
+  <Card title="Plugin Styles" icon="palette" href="https://styles-doc.plugins.penpot.app">
+    Explore the full component library to make your plugin look native in Penpot.
+  </Card>
+  <Card title="Example Plugins" icon="shapes" href="https://github.com/penpot/penpot-plugins-samples">
+    Study real-world plugin examples from the Penpot team.
+  </Card>
+</CardGroup>
+
+## Frequently asked questions
+
+<AccordionGroup>
+  <Accordion title="Do I have to deploy my plugin to test it?">
+    No. Locally served plugins on `http://localhost` are fully compatible with `https://penpot.app`. Just make sure your dev server is running and the manifest URL is reachable.
+  </Accordion>
+  <Accordion title="Which Node.js version should I use?">
+    The Penpot team uses Node.js v22. We recommend using the same version to avoid compatibility issues.
+  </Accordion>
+  <Accordion title="Does my plugin need a UI?">
+    No. A UI is completely optional. The **Create Palette** plugin, for example, runs entirely headlessly — it reads the local library colors and creates a board, then closes itself. See the [source code](https://github.com/penpot/penpot/tree/main/plugins/apps/create-palette-plugin).
+  </Accordion>
+  <Accordion title="Can I use the same plugin on a self-hosted Penpot instance?">
+    Yes. As long as the plugin system is enabled on your instance, you can install plugins exactly the same way — just open the Plugin Manager and provide the manifest URL.
+  </Accordion>
+</AccordionGroup>

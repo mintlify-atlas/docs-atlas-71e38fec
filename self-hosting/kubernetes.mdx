@@ -1,0 +1,180 @@
+---
+title: "Deploy Penpot on Kubernetes"
+sidebarTitle: "Kubernetes"
+description: "Deploy and manage Penpot on any Kubernetes cluster using the official Helm chart. Covers installation, configuration, upgrades, rollbacks, and persistent data backups."
+---
+
+Penpot provides an official [Helm](https://helm.sh/) chart that packages all the resources needed to run Penpot on any Kubernetes cluster. This guide walks through adding the Helm repository, installing the chart, customizing it for your environment, upgrading to new versions, and backing up persistent data. Kubernetes-specific deployment variants — OpenShift and Rancher — are also covered.
+
+## Prerequisites
+
+- A running Kubernetes cluster (any distribution — EKS, GKE, AKS, k3s, etc.)
+- `kubectl` configured to access that cluster
+- [Helm v3](https://helm.sh/docs/intro/install/) installed on your local machine
+
+## What Is Helm?
+
+Helm is the package manager for Kubernetes. A **Chart** is a Helm package containing all the Kubernetes resource definitions needed to run an application. A **Release** is an instance of a chart running in a cluster — you can install the same chart multiple times under different release names. A **Repository** is a collection of charts that can be shared and searched.
+
+## Install Helm
+
+<Note>
+  Skip this section if Helm is already installed. Run `helm version` to confirm.
+</Note>
+
+Follow the [official Helm installation guide](https://helm.sh/docs/intro/install/) for your OS. On most systems:
+
+<CodeGroup>
+  ```bash macOS (Homebrew)
+  brew install helm
+  ```
+
+  ```bash Linux (script)
+  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  ```
+
+  ```bash Windows (Chocolatey)
+  choco install kubernetes-helm
+  ```
+</CodeGroup>
+
+## Add the Penpot Helm Repository
+
+Register the official Penpot chart repository with Helm:
+
+```bash
+helm repo add penpot http://helm.penpot.app
+```
+
+Update your local cache to fetch the latest chart metadata:
+
+```bash
+helm repo update
+```
+
+## Install the Penpot Chart
+
+### Minimal Installation
+
+Install with the release name `my-release` and default values:
+
+```bash
+helm install my-release penpot/penpot
+```
+
+### With Inline Parameters
+
+Customize the installation by passing `--set` flags. For example, to enable the bundled PostgreSQL and Valkey services and persistent asset storage:
+
+```bash
+helm install my-release \
+  --set global.postgresqlEnabled=true \
+  --set global.valkeyEnabled=true \
+  --set persistence.assets.enabled=true \
+  penpot/penpot
+```
+
+### With a Values File (Recommended)
+
+For anything beyond a quick test, provide a `values.yaml` file. This is easier to maintain, version-control, and review:
+
+```bash
+helm install my-release -f values.yaml penpot/penpot
+```
+
+<Tip>
+  Start from the [default `values.yaml`](https://github.com/penpot/penpot-helm/blob/main/charts/penpot/values.yaml) in the Penpot Helm repository, copy it locally, and modify only what you need.
+</Tip>
+
+## Configure Penpot with Helm
+
+All configurable parameters are documented in the default `values.yaml` and on the [ArtifactHub parameters page](https://artifacthub.io/packages/helm/penpot/penpot#parameters). The parameters map closely to the environment variables described in the [Configuration guide](/self-hosting/configuration).
+
+Key areas to configure in your `values.yaml`:
+
+```yaml values.yaml
+# Set the public URL users will reach Penpot at
+config:
+  publicUri: "https://penpot.mycompany.com"
+
+# Enable bundled PostgreSQL (or point to an external instance)
+global:
+  postgresqlEnabled: true
+  valkeyEnabled: true
+
+# Persist user-uploaded assets
+persistence:
+  assets:
+    enabled: true
+    size: 50Gi
+
+# SMTP example
+backend:
+  env:
+    PENPOT_SMTP_HOST: "smtp.mycompany.com"
+    PENPOT_SMTP_PORT: "587"
+    PENPOT_SMTP_TLS: "true"
+```
+
+## OpenShift
+
+If you are deploying on OpenShift, review the dedicated section in the ArtifactHub documentation: [OpenShift Requirements](https://artifacthub.io/packages/helm/penpot/penpot#-openshift-requirements). OpenShift enforces stricter security context constraints (SCCs) that require specific Helm values to be set before deployment.
+
+## Rancher
+
+For Rancher-managed clusters, follow the official Rancher reference guide: [Reference guides / Penpot](https://docs.apps.rancher.io/reference-guides/penpot/).
+
+## Upgrade Penpot
+
+When a new chart version is released or you want to change configuration, use `helm upgrade`:
+
+```bash
+helm upgrade my-release -f values.yaml penpot/penpot
+```
+
+Helm performs the least-invasive upgrade, only changing what has differed since the last release.
+
+### Check Revision History
+
+Each upgrade creates a new revision. Inspect the history:
+
+```bash
+helm history my-release
+```
+
+### Roll Back
+
+If something goes wrong, roll back to the previous revision:
+
+```bash
+helm rollback my-release 1
+```
+
+Replace `1` with the revision number shown in `helm history`.
+
+## Backup Penpot
+
+The Penpot Helm chart uses **Persistent Volumes** (PVs) for all stateful data. There are two primary PVs:
+
+| Volume | Contents |
+|---|---|
+| PostgreSQL PV | Relational database (files, users, teams) |
+| Assets PV | User-uploaded images and SVG clips |
+
+Back up these volumes using **volume snapshots**. Ensure your cluster's Container Storage Interface (CSI) driver supports snapshots — all major cloud providers (AWS EBS, GCP Persistent Disk, Azure Disk) do. Consult your CSI driver's documentation for snapshot procedures.
+
+<Warning>
+  Also back up your custom `values.yaml` (or your list of `--set` parameters). Without it, you cannot reproduce an identical release on a new cluster.
+</Warning>
+
+## Uninstall
+
+To remove the Penpot release from your cluster:
+
+```bash
+helm uninstall my-release
+```
+
+<Note>
+  Uninstalling the release does **not** delete PersistentVolumeClaims by default. Delete them manually if you want to free the storage, or retain them to restore data later.
+</Note>

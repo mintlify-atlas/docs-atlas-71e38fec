@@ -1,0 +1,430 @@
+---
+title: "Configure Your Penpot Instance"
+sidebarTitle: "Configuration"
+description: "Full reference for Penpot environment variables and feature flags. Covers registration, OAuth providers, SMTP, storage, MCP, CSP, HSTS, and recommended hardware settings."
+---
+
+Penpot is configured entirely through **environment variables** and **feature flags** — no config files to edit by hand. This guide covers every major configuration area, from initial setup through advanced options like S3 storage, OIDC single sign-on, and Content Security Policy tuning. All examples show real variable names from the Penpot source.
+
+<Info>
+  All examples that show a value represent the **default** value for that variable. Examples with no value are optional and inactive/disabled by default.
+</Info>
+
+## How Configuration Works
+
+**Environment variables** start with `PENPOT_` and configure concrete settings (database URIs, SMTP credentials, storage buckets, etc.). They are set per-service (frontend, backend, exporter).
+
+**Feature flags** use the format `enable-<name>` or `disable-<name>` and are collected in a single `PENPOT_FLAGS` environment variable that applies to all services:
+
+```bash
+PENPOT_FLAGS: disable-email-verification enable-smtp enable-prepl-server disable-secure-session-cookies enable-mcp enable-admin-console
+```
+
+Flags and environment variables are often used together — a flag enables a feature, while environment variables configure its details:
+
+```bash
+# Enable SMTP
+PENPOT_FLAGS: [...] enable-smtp
+
+# Configure the SMTP provider (backend only)
+PENPOT_SMTP_HOST: smtp.mycompany.com
+PENPOT_SMTP_PORT: 587
+```
+
+## Recommended Hardware Settings
+
+These settings support thousands of users on a single server.
+
+| Resource | Recommended |
+|---|---|
+| CPU | 4 vCPUs |
+| RAM | 16 GB |
+| Database disk | 50–100 GB minimum (add ~5 GB per additional editor beyond 10) |
+| Browser | Latest stable Chrome for best end-user performance |
+
+<Note>
+  These recommendations do not cover high-availability setups. For HA deployments, see the [High Availability](#high-availability) section below. For air-gapped environments, see [Air-Gapped Environments](#air-gapped-environments).
+</Note>
+
+## Public URI
+
+Set the public URL that users will use to access Penpot. This variable is required for all services:
+
+<ParamField body="PENPOT_PUBLIC_URI" type="string" required>
+  The publicly reachable URL of your Penpot instance. Used by the frontend, backend, and exporter.
+
+  ```bash
+  # Backend, Frontend, Exporter
+  PENPOT_PUBLIC_URI: https://penpot.mycompany.com
+  ```
+</ParamField>
+
+<Warning>
+  If you serve Penpot over HTTP on a non-localhost domain, you must add `disable-secure-session-cookies` to `PENPOT_FLAGS`. Some browser APIs (including the clipboard) do not work over plain HTTP.
+</Warning>
+
+## Secret Key
+
+<ParamField body="PENPOT_SECRET_KEY" type="string" required>
+  Master key from which HTTP session keys and invitation tokens are derived. Without a persistent key, all sessions and invitations are invalidated on container restart.
+
+  Generate a strong key:
+  ```bash
+  python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+  ```
+
+  ```bash
+  # Backend
+  PENPOT_SECRET_KEY: my-super-secure-key
+  ```
+</ParamField>
+
+## Registration and Authentication
+
+Penpot supports email/password, OAuth providers (Google, GitHub, GitLab, generic OIDC), Azure AD, and LDAP. Methods can be combined.
+
+### Email / Password (Default)
+
+Enabled by default. For production, configure SMTP alongside it so email verification and team invitations work correctly.
+
+**Disable public registration** (invitation-only access):
+
+```bash
+PENPOT_FLAGS: [...] disable-registration enable-login-with-password
+```
+
+**Restrict registration to specific email domains:**
+
+```bash
+# Backend — comma-separated list
+PENPOT_REGISTRATION_DOMAIN_WHITELIST: mycompany.com,partner.com
+
+# Backend — or a file with one domain per line
+PENPOT_EMAIL_DOMAIN_WHITELIST: /path/to/whitelist.txt
+PENPOT_EMAIL_DOMAIN_BLACKLIST: /path/to/blacklist.txt
+```
+
+<Note>
+  Since version 2.1, email whitelisting must also be enabled with the `enable-email-whitelist` flag. For backward compatibility it is auto-enabled when `PENPOT_REGISTRATION_DOMAIN_WHITELIST` is non-empty.
+</Note>
+
+### Google OAuth
+
+```bash
+PENPOT_FLAGS: [...] enable-login-with-google
+
+# Backend only
+PENPOT_GOOGLE_CLIENT_ID: <client-id>
+PENPOT_GOOGLE_CLIENT_SECRET: <client-secret>
+```
+
+Set the authorized callback URI in your Google Cloud Console to:
+```
+https://<your_domain>/api/auth/oidc/callback
+```
+
+### GitHub OAuth
+
+```bash
+PENPOT_FLAGS: [...] enable-login-with-github
+
+# Backend only
+PENPOT_GITHUB_CLIENT_ID: <client-id>
+PENPOT_GITHUB_CLIENT_SECRET: <client-secret>
+```
+
+### GitLab OAuth
+
+```bash
+PENPOT_FLAGS: [...] enable-login-with-gitlab
+
+# Backend only
+PENPOT_GITLAB_BASE_URI: https://gitlab.com
+PENPOT_GITLAB_CLIENT_ID: <client-id>
+PENPOT_GITLAB_CLIENT_SECRET: <client-secret>
+```
+
+### Generic OpenID Connect (SSO)
+
+Available since version 1.5.0. Supports any OIDC-compliant provider (Keycloak, Okta, Auth0, etc.).
+
+```bash
+PENPOT_FLAGS: [...] enable-login-with-oidc
+
+# Backend
+PENPOT_OIDC_CLIENT_ID: <client-id>
+PENPOT_OIDC_BASE_URI: <autodiscovery-uri>
+PENPOT_OIDC_CLIENT_SECRET: <client-secret>
+
+# Optional overrides (useful when browser-facing and backend-facing endpoints differ)
+PENPOT_OIDC_AUTH_URI: <uri>
+PENPOT_OIDC_TOKEN_URI: <uri>
+PENPOT_OIDC_USER_URI: <uri>
+PENPOT_OIDC_JWKS_URI: <uri>
+
+# Optional role-based access control
+PENPOT_OIDC_ROLES: "role1 role2"
+PENPOT_OIDC_ROLES_ATTR:
+
+# Optional custom scopes (defaults to "openid profile")
+PENPOT_OIDC_SCOPES: "scope1 scope2"
+
+# Optional attribute mapping
+PENPOT_OIDC_NAME_ATTR:
+PENPOT_OIDC_EMAIL_ATTR:
+
+# Optional: read user info from token instead of userinfo endpoint
+PENPOT_OIDC_USER_INFO_SOURCE:
+
+# Allow OIDC login without prior email registration (since 2.1.2)
+PENPOT_FLAGS: [...] enable-oidc-registration
+
+# Customize the OIDC button label (since 2.16.0) — Frontend
+PENPOT_OIDC_NAME: <provider-name>
+```
+
+<Info>
+  For containerized deployments, the OIDC provider's browser-facing (public) and backend-facing (internal) endpoints may differ. Use the override variables above to set the correct endpoints for each side, and add the internal hostname to SSRF protection:
+
+  ```bash
+  # Backend
+  PENPOT_SSRF_ALLOWED_HOSTS: "internal-provider-host public-provider-host"
+  ```
+</Info>
+
+### Azure Active Directory (OIDC)
+
+```bash
+PENPOT_FLAGS: [...] enable-login-with-oidc
+
+# Backend & Frontend
+PENPOT_OIDC_CLIENT_ID: <client-id>
+
+# Backend
+PENPOT_OIDC_BASE_URI: https://login.microsoftonline.com/<tenant-id>/v2.0/
+PENPOT_OIDC_CLIENT_SECRET: <client-secret>
+```
+
+### LDAP
+
+```bash
+PENPOT_FLAGS: [...] enable-login-with-ldap
+
+# Backend
+PENPOT_LDAP_HOST: ldap
+PENPOT_LDAP_PORT: 10389
+PENPOT_LDAP_SSL: false
+PENPOT_LDAP_STARTTLS: false
+PENPOT_LDAP_BASE_DN: ou=people,dc=planetexpress,dc=com
+PENPOT_LDAP_BIND_DN: cn=admin,dc=planetexpress,dc=com
+PENPOT_LDAP_BIND_PASSWORD: GoodNewsEveryone
+PENPOT_LDAP_USER_QUERY: (&(|(uid=:username)(mail=:username))(memberOf=cn=penpot,ou=groups,dc=my-domain,dc=com))
+PENPOT_LDAP_ATTRS_USERNAME: uid
+PENPOT_LDAP_ATTRS_EMAIL: mail
+PENPOT_LDAP_ATTRS_FULLNAME: cn
+PENPOT_LDAP_ATTRS_PHOTO: jpegPhoto
+```
+
+### Account Lockout
+
+Available since version 2.19.0. Locks an account after repeated failed login attempts (password and LDAP only):
+
+```bash
+PENPOT_FLAGS: [...] enable-account-lockout
+
+# Backend — customize defaults
+PENPOT_LOGIN_LOCKOUT_MAX_ATTEMPTS: 5
+PENPOT_LOGIN_LOCKOUT_WINDOW: 15m
+```
+
+## Email / SMTP
+
+By default, SMTP is disabled and outgoing emails are printed to stdout. Configure a real SMTP provider for production:
+
+```bash
+PENPOT_FLAGS: [...] enable-smtp
+
+# Backend
+PENPOT_SMTP_DEFAULT_FROM: Penpot <no-reply@example.com>
+PENPOT_SMTP_DEFAULT_REPLY_TO: Penpot <no-reply@example.com>
+PENPOT_SMTP_HOST: <host>
+PENPOT_SMTP_PORT: 587
+PENPOT_SMTP_USERNAME: <username>
+PENPOT_SMTP_PASSWORD: <password>
+PENPOT_SMTP_TLS: true
+```
+
+To log emails to stdout instead of sending them (useful in development):
+
+```bash
+PENPOT_FLAGS: [...] enable-log-emails
+```
+
+## Database
+
+<ParamField body="PENPOT_DATABASE_URI" type="string" required>
+  PostgreSQL connection URI. Penpot requires PostgreSQL ≥ 13.
+
+  ```bash
+  # Backend
+  PENPOT_DATABASE_URI: postgresql://127.0.0.1/penpot
+  PENPOT_DATABASE_USERNAME: penpot
+  PENPOT_DATABASE_PASSWORD: penpot
+  ```
+</ParamField>
+
+## Valkey (Redis-compatible cache)
+
+<ParamField body="PENPOT_REDIS_URI" type="string">
+  Connection URI for Valkey/Redis. Used for WebSocket notifications and (since 2.11) as a cache layer.
+
+  ```bash
+  # Backend, Exporter
+  PENPOT_REDIS_URI: redis://localhost/0
+  ```
+</ParamField>
+
+Recommended Valkey memory settings to prevent unbounded RAM usage:
+
+```bash
+maxmemory 128mb
+maxmemory-policy volatile-lfu
+```
+
+These defaults are pre-configured in the official Docker Compose and Helm chart.
+
+## Object Storage (Assets)
+
+Penpot supports two object storage backends for user-uploaded files.
+
+### Filesystem (Default)
+
+```bash
+# Backend
+PENPOT_OBJECTS_STORAGE_BACKEND: fs
+PENPOT_OBJECTS_STORAGE_FS_DIRECTORY: /opt/data/assets
+```
+
+### AWS S3 (or S3-compatible — e.g. MinIO)
+
+```bash
+# Backend
+AWS_ACCESS_KEY_ID: <your-access-key-id>
+AWS_SECRET_ACCESS_KEY: <your-secret-access-key>
+PENPOT_OBJECTS_STORAGE_BACKEND: s3
+PENPOT_OBJECTS_STORAGE_S3_REGION: <aws-region>
+PENPOT_OBJECTS_STORAGE_S3_BUCKET: <bucket-name>
+
+# Optional: for non-AWS S3-compatible services (MinIO, etc.)
+PENPOT_OBJECTS_STORAGE_S3_ENDPOINT: <endpoint-uri>
+```
+
+<Note>
+  Since version 2.11.0, the storage variable prefix changed from `PENPOT_STORAGE_ASSETS_*` to `PENPOT_OBJECTS_STORAGE_*`, and backend values changed from `assets-fs`/`assets-s3` to `fs`/`s3`.
+</Note>
+
+## MCP Server
+
+The MCP (Model Context Protocol) server lets AI agents read and edit Penpot files.
+
+```bash
+PENPOT_FLAGS: [...] enable-mcp
+
+# Frontend — locate the MCP service
+PENPOT_MCP_URI: http://penpot-mcp:4401
+PENPOT_MCP_URI_WS: http://penpot-mcp:4402
+```
+
+## Frontend Service Routing
+
+```bash
+# Frontend — connect to backend and exporter
+PENPOT_BACKEND_URI: http://your-penpot-backend:6060
+PENPOT_EXPORTER_URI: http://your-penpot-exporter:6061
+
+# Frontend — DNS resolver for internal service names
+# 127.0.0.11 is the embedded Docker DNS server
+PENPOT_INTERNAL_RESOLVER: 127.0.0.11
+```
+
+## Security Headers
+
+### Content Security Policy
+
+Penpot ships a CSP in **report-only** mode by default (violations are logged in the browser console, nothing is blocked):
+
+```bash
+PENPOT_CSP_MODE: report-only    # report-only (default) | enforce | disabled
+```
+
+To extend the default policy without replacing it entirely:
+
+```bash
+PENPOT_CSP_CONNECT_SRC_EXTRA: "https://analytics.example.com"
+PENPOT_CSP_SCRIPT_SRC_EXTRA: "'unsafe-eval'"
+PENPOT_CSP_IMG_SRC_EXTRA: "https://plugins.example.com"
+PENPOT_CSP_FRAME_SRC_EXTRA: "https://plugins.example.com"
+```
+
+To collect CSP violation reports:
+
+```bash
+PENPOT_CSP_REPORT_URI: https://csp-reporting.example.com/report
+```
+
+### HTTP Strict Transport Security
+
+HSTS is enabled automatically when `PENPOT_PUBLIC_URI` uses `https`. Override or disable it:
+
+```bash
+PENPOT_HSTS_VALUE: "max-age=63072000; includeSubDomains; preload"
+# Set to empty string to disable
+```
+
+## High Availability
+
+In a high-availability setup, the `frontend`, `backend`, `exporter`, and `mcp` services are all horizontally scalable. Key considerations:
+
+- **Database**: Single primary instance recommended; a read replica can serve as a failover.
+- **Valkey**: A single instance is sufficient — replication is not required for Penpot's use case.
+- **User media storage**: Must use centralized storage (S3, or Kubernetes PVC mounted across replicas) — local filesystem storage is not viable in HA.
+
+## Air-Gapped Environments
+
+By default, Penpot proxies requests to GitHub (for library templates) and Google (for Google Fonts). To disable these external requests:
+
+```bash
+PENPOT_FLAGS: [...] enable-air-gapped-conf
+```
+
+This disables the templates dashboard and Google Fonts provider.
+
+## Demo Environment
+
+For testing instances:
+
+```bash
+PENPOT_FLAGS: disable-registration enable-demo-users enable-demo-warning
+```
+
+- `disable-registration` — prevents public registration (invitation-only)
+- `enable-demo-users` — auto-creates users with a 7-day expiry; provides a "Create demo account" link
+- `enable-demo-warning` — shows a banner warning that the environment is ephemeral
+
+## Other Useful Flags
+
+| Flag | Description |
+|---|---|
+| `enable-prepl-server` | Required for the `manage.py` CLI and admin tools |
+| `enable-admin-console` | Enables the Admin Console UI (required in future releases) |
+| `enable-telemetries` | Sends anonymous usage data to help improve Penpot |
+| `enable-webhooks` | Enables outbound webhook events |
+| `enable-access-tokens` | Enables personal access tokens for API authentication |
+| `disable-login-with-password` | Hides the password login form (use with an external IdP) |
+| `disable-onboarding` | Suppresses onboarding modals for new users |
+| `disable-dashboard-templates-section` | Hides the templates section from the dashboard |
+| `disable-google-fonts-provider` | Disables the Google Fonts integration |
+| `enable-link-preview` | Enables Open Graph metadata on shared file links |
+| `enable-log-invitation-tokens` | Logs invitation tokens to stdout (useful when SMTP is unavailable) |
+| `enable-cors` | Enables permissive CORS (dev use only) |
+| `enable-backend-api-doc` | Enables the `/api/doc` endpoint listing all RPC methods |

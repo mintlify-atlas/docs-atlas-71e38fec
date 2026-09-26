@@ -1,0 +1,242 @@
+---
+title: "Set Up the Penpot Development Environment"
+sidebarTitle: "Dev Environment"
+description: "Step-by-step guide to running Penpot's Docker-based devenv: start services, access the app, open the backend REPL, hot-reload frontend, and configure feature flags."
+---
+
+Penpot ships a self-contained Docker-based development environment that starts all services — PostgreSQL, Redis/Valkey, object storage, a mail catcher, and the Penpot processes themselves — inside a tmux session with hot-reload for both the frontend and backend.
+
+## Prerequisites
+
+- **Docker** and **Docker Compose V2** installed. See the [Docker installation guide](https://docs.docker.com/get-docker/) for your platform.
+- Optionally, increase the inotify watch limit for better filesystem watch performance:
+
+```bash
+echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+```
+
+<Note>
+The devenv is tmux-based. Basic tmux familiarity helps: `Ctrl+b c` to create a window, `Ctrl+b w` to switch, `Ctrl+b &` to close.
+</Note>
+
+## Getting Started
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/penpot/penpot.git
+    cd penpot
+    ```
+  </Step>
+  <Step title="Pull the devenv image">
+    ```bash
+    ./manage.sh pull-devenv
+    ```
+    This downloads the pre-built devenv Docker image from Docker Hub.
+  </Step>
+  <Step title="Start the devenv">
+    ```bash
+    ./manage.sh run-devenv
+    ```
+    This:
+    1. Starts shared infrastructure (PostgreSQL, RustFS, Valkey, mailer, LDAP) in the background.
+    2. Starts the main devenv container and attaches your terminal to its tmux session.
+    3. Automatically starts all Penpot services inside tmux windows.
+  </Step>
+  <Step title="Open the application">
+    Once all services are running (usually about a minute), open your browser to:
+
+    **[https://localhost:3449](https://localhost:3449)**
+
+    The self-signed TLS certificate will produce a browser warning — accept it to continue.
+  </Step>
+  <Step title="Create your first user">
+    Register through the UI, or use the management script from any tmux shell:
+
+    ```bash
+    cd penpot/backend/scripts
+    python3 manage.py create-profile
+    # Or with options:
+    python3 manage.py create-profile -n "Jane Doe" -e jane@example.com -p secretpassword \
+      --skip-tutorial --skip-walkthrough
+    ```
+  </Step>
+</Steps>
+
+## Devenv tmux Windows
+
+The tmux session opens several windows, each running a different process:
+
+| Window | Process | Description |
+|---|---|---|
+| 0 | **gulp** | Builds and watches styles, fonts, icon sprites, and templates |
+| 1 | **shadow-cljs** | Watches and compiles ClojureScript for the frontend |
+| 2 | **storybook** | Design system component browser at [http://localhost:6006](http://localhost:6006) |
+| 3 | **exporter** | shadow-cljs build for the export service (Node.js) |
+| 4 | **backend** | Clojure JVM backend process |
+
+Switch between windows with `Ctrl+b <number>` or `Ctrl+b w`.
+
+## Frontend Development
+
+The frontend hot-reloads automatically when you save ClojureScript files. The shadow-cljs process in **window 1** handles compilation.
+
+### Open a ClojureScript REPL
+
+Split window 1 (`Ctrl+b "`) and run:
+
+```bash
+cd penpot/frontend
+npx shadow-cljs cljs-repl main
+```
+
+You need an active browser session with Penpot open for the REPL to connect.
+
+### IDE nREPL connection
+
+Connect your editor to `localhost:3447` (the shadow-cljs nREPL port), then evaluate:
+
+```clojure
+(shadow/repl :main)
+```
+
+## Backend Development
+
+The backend runs in **window 4**. By default it starts in non-interactive mode.
+
+### Switch to interactive REPL mode
+
+```bash
+# Press Ctrl+C to stop the non-interactive backend, then:
+./scripts/repl
+```
+
+Inside the REPL:
+
+```clojure
+(start)     ;; start all subsystems
+(stop)      ;; stop all subsystems
+(restart)   ;; hot-reload changed namespaces and restart
+```
+
+If an exception occurs during reload:
+
+```clojure
+(repl/refresh-all)
+(restart)
+```
+
+### IDE nREPL connection
+
+The backend exposes nREPL on port `6064`. Connect your Clojure editor to `localhost:6064`.
+
+## Parallel Workspaces
+
+The devenv supports multiple independent workspaces (`ws0`, `ws1`, `ws2`, …) that share one database and one object-storage bucket but run independent Penpot processes.
+
+```bash
+./manage.sh run-devenv            # main workspace (ws0)
+./manage.sh run-devenv --ws 1     # second workspace (ws1)
+./manage.sh run-devenv --ws 2 --sync  # third, re-seeded from the live repo
+```
+
+Host ports are offset by `10000 × N`:
+
+| Service | ws0 | ws1 | ws2 |
+|---|---|---|---|
+| Penpot UI | `https://localhost:3449` | `https://localhost:13449` | `https://localhost:23449` |
+| MCP HTTP | `http://localhost:4401/mcp` | `http://localhost:14401/mcp` | `http://localhost:24401/mcp` |
+
+Stop individual workspaces independently; shared infrastructure shuts down only when no workspaces remain:
+
+```bash
+./manage.sh stop-devenv --ws 1    # stop ws1; ws0 + infra stay up
+./manage.sh stop-devenv --all     # stop everything
+```
+
+## manage.sh Reference
+
+```bash
+./manage.sh pull-devenv              # download latest devenv image
+./manage.sh build-devenv --local     # build devenv image locally
+./manage.sh start-devenv             # start infra + ws0 in background (no attach)
+./manage.sh run-devenv               # start + attach to tmux (ws0)
+./manage.sh run-devenv --ws 1        # start + attach workspace 1
+./manage.sh attach-devenv            # re-attach to a running tmux session
+./manage.sh stop-devenv              # stop ws0 (infra stays if ws1+ running)
+./manage.sh stop-devenv --all        # stop everything
+./manage.sh drop-devenv              # remove containers (data volumes preserved)
+```
+
+## Supporting Services
+
+### Email (Mailpit)
+
+The devenv includes [Mailpit](https://mailpit.axllent.org/) as a local SMTP server. It never sends mail externally; all messages appear in its web UI:
+
+**[http://localhost:1080](http://localhost:1080)**
+
+The inbox is persisted in a Docker volume and survives container restarts.
+
+### Object Storage (RustFS)
+
+The devenv uses RustFS as an S3-compatible object store:
+
+- **API:** [http://localhost:9000](http://localhost:9000)
+- **Console:** [http://localhost:9001](http://localhost:9001)
+- **Login:** access key `penpot-devenv`, secret `penpot-devenv`
+
+## Feature Flags
+
+### Frontend flags
+
+Create `frontend/resources/public/js/config.js` (gitignored) and set the `penpotFlags` variable:
+
+```javascript
+var penpotFlags = "enable-mcp enable-webhooks enable-access-tokens";
+```
+
+Reload the browser after changing this file. Flags use `enable-<flag>` / `disable-<flag>` format and are merged on top of the built-in defaults.
+
+Common flags:
+
+| Flag | Description |
+|---|---|
+| `enable-access-tokens` | Access Tokens section in profile settings |
+| `enable-mcp` | MCP server configuration UI |
+| `enable-webhooks` | Webhooks configuration |
+| `enable-login-with-ldap` | LDAP login option |
+
+The full flag list is in `common/src/app/common/flags.cljc`.
+
+### Backend flags
+
+Create `backend/scripts/_env.local` (gitignored) and append flags to `$PENPOT_FLAGS`:
+
+```bash
+export PENPOT_FLAGS="$PENPOT_FLAGS enable-access-tokens enable-mcp"
+```
+
+Restart the backend for flag changes to take effect.
+
+<Warning>
+Setting `PENPOT_FLAGS` in the container environment directly does not work — `_env` expands the inherited value before its own list, so its entries will override yours. Use `_env.local` instead.
+</Warning>
+
+### Per-team flags (debug page)
+
+To toggle a flag for a specific team:
+
+1. Copy the `team-id` from the URL in Penpot (e.g. `?team-id=1234bd95-…`).
+2. Navigate to [http://localhost:3449/dbg](http://localhost:3449/dbg).
+3. Open the Feature Flag panel, enter the team ID and flag name, and click **Submit**.
+
+## Exporter
+
+The exporter runs in **window 3** but does **not** start automatically. Start it manually:
+
+```bash
+node target/app.js
+```
+
+The exporter drives a headless Chromium instance to render pages and shapes for PNG/SVG/PDF export.

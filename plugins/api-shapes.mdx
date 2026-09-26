@@ -1,0 +1,638 @@
+---
+title: "Penpot Plugin API: Working with Shapes"
+sidebarTitle: "Shapes API"
+description: "Learn how to create, modify, and traverse every shape type in Penpot plugins — rectangles, boards, text, paths, groups, booleans, and more."
+---
+
+Shapes are the fundamental building blocks of every Penpot design. The Plugin API gives you full programmatic access to create, read, and update shapes on the canvas. All shape-creation methods live on the global `penpot` object and require the `content:write` permission. Reading shape properties requires `content:read`.
+
+<Note>
+  All shapes share a common base interface called `ShapeBase`. Type-specific shapes (e.g. `Board`, `Text`, `Path`) extend that base with additional properties and methods.
+</Note>
+
+---
+
+## The `Shape` union type
+
+```ts
+type Shape =
+  | Board      // type: 'board'
+  | Group      // type: 'group'
+  | Boolean    // type: 'boolean'
+  | Rectangle  // type: 'rectangle'
+  | Path       // type: 'path'
+  | Text       // type: 'text'
+  | Ellipse    // type: 'ellipse'
+  | SvgRaw     // type: 'svg-raw'
+  | Image;     // type: 'image'  (deprecated — use fillImage on a Rectangle)
+```
+
+Use the type guards in `penpot.utils.types` to narrow a `Shape` to a specific sub-type before accessing type-specific properties:
+
+```ts
+for (const shape of penpot.selection) {
+  if (penpot.utils.types.isText(shape)) {
+    console.log(shape.characters); // safe — shape is Text here
+  }
+  if (penpot.utils.types.isBoard(shape)) {
+    console.log(shape.children.length);
+  }
+}
+```
+
+---
+
+## Creating shapes
+
+### `penpot.createRectangle()`
+
+<ResponseField name="returns" type="Rectangle">
+  A new rectangle added to the current page.
+</ResponseField>
+
+```ts
+const rect = penpot.createRectangle();
+rect.name = 'Card';
+rect.x = 100;
+rect.y = 200;
+rect.resize(320, 180);
+rect.borderRadius = 8;
+rect.fills = [{ fillColor: '#FFFFFF' }];
+rect.strokes = [{
+  strokeColor: '#CCCCCC',
+  strokeStyle: 'solid',
+  strokeWidth: 1,
+  strokeAlignment: 'inner',
+}];
+```
+
+### `penpot.createBoard()`
+
+Creates a **board** (Penpot's term for a frame). Boards are containers and the primary starting point for any layout.
+
+<ResponseField name="returns" type="Board">
+  A new board shape added to the current page.
+</ResponseField>
+
+```ts
+const board = penpot.createBoard();
+board.name = 'Mobile – Home';
+board.resize(375, 812);
+board.fills = [{ fillColor: '#F8F8F8' }];
+board.clipContent = true;
+board.showInViewMode = true;
+```
+
+### `penpot.createEllipse()`
+
+<ResponseField name="returns" type="Ellipse">
+  A new ellipse added to the current page.
+</ResponseField>
+
+```ts
+const ellipse = penpot.createEllipse();
+ellipse.resize(64, 64);
+ellipse.fills = [{ fillColor: '#FF5733', fillOpacity: 1 }];
+```
+
+### `penpot.createPath()`
+
+<ResponseField name="returns" type="Path">
+  A new path shape added to the current page.
+</ResponseField>
+
+```ts
+const path = penpot.createPath();
+path.name = 'Triangle';
+// Set path data via SVG path string
+path.d = 'M 50 0 L 100 100 L 0 100 Z';
+path.fills = [{ fillColor: '#7EFFF5' }];
+```
+
+### `penpot.createText(text)`
+
+<ParamField body="text" type="string" required>
+  The initial text content. Must be a non-empty string.
+</ParamField>
+
+<ResponseField name="returns" type="Text | null">
+  The new text shape, or `null` if the text was empty.
+</ResponseField>
+
+```ts
+const heading = penpot.createText('Hello, Penpot!');
+if (heading) {
+  heading.name = 'Page title';
+  heading.fontSize = '40';
+  heading.fontFamily = 'Work Sans';
+  heading.fontWeight = '700';
+  heading.fills = [{ fillColor: '#111111' }];
+  heading.growType = 'auto-width';
+}
+```
+
+### `penpot.createBoolean(boolType, shapes)`
+
+Performs a boolean operation on the provided shapes.
+
+<ParamField body="boolType" type="'union' | 'difference' | 'exclude' | 'intersection'" required>
+  The boolean operation to apply.
+</ParamField>
+
+<ParamField body="shapes" type="Shape[]" required>
+  The shapes to combine.
+</ParamField>
+
+<ResponseField name="returns" type="Boolean | null">
+  The resulting boolean shape, or `null` on failure.
+</ResponseField>
+
+```ts
+const s1 = penpot.createRectangle();
+const s2 = penpot.createEllipse();
+s2.x = 50;
+const merged = penpot.createBoolean('union', [s1, s2]);
+```
+
+### `penpot.createShapeFromSvg(svgString)`
+
+Converts an SVG string into a `Group` of Penpot shapes synchronously.
+
+```ts
+const svgGroup = penpot.createShapeFromSvg(`
+  <svg width="24" height="24" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" fill="#007AFF"/>
+  </svg>
+`);
+```
+
+### `penpot.createShapeFromSvgWithImages(svgString)`
+
+Like `createShapeFromSvg`, but handles embedded images asynchronously.
+
+```ts
+const group = await penpot.createShapeFromSvgWithImages(svgWithImages);
+```
+
+---
+
+## Common shape properties (`ShapeBase`)
+
+Every shape type inherits these properties.
+
+<Tabs>
+  <Tab title="Identity">
+    <ResponseField name="id" type="string">Read-only unique identifier.</ResponseField>
+    <ResponseField name="name" type="string">Writable display name shown in the layers panel.</ResponseField>
+    <ResponseField name="type" type="string">Read-only shape type discriminant (e.g. `'board'`, `'text'`).</ResponseField>
+    <ResponseField name="parent" type="Shape | null">The direct parent shape (or `null` for top-level shapes).</ResponseField>
+    <ResponseField name="parentIndex" type="number">Index of this shape within its parent's children array.</ResponseField>
+  </Tab>
+  <Tab title="Position & size">
+    <ResponseField name="x" type="number">Absolute X coordinate of the shape's top-left corner.</ResponseField>
+    <ResponseField name="y" type="number">Absolute Y coordinate of the shape's top-left corner.</ResponseField>
+    <ResponseField name="width" type="number">Read-only width in pixels.</ResponseField>
+    <ResponseField name="height" type="number">Read-only height in pixels.</ResponseField>
+    <ResponseField name="bounds" type="Bounds">Read-only bounding box `{ x, y, width, height }`.</ResponseField>
+    <ResponseField name="center" type="Point">Read-only geometric center `{ x, y }`.</ResponseField>
+    <ResponseField name="boardX" type="number">X position relative to the containing board.</ResponseField>
+    <ResponseField name="boardY" type="number">Y position relative to the containing board.</ResponseField>
+    <ResponseField name="parentX" type="number">X position relative to the direct parent.</ResponseField>
+    <ResponseField name="parentY" type="number">Y position relative to the direct parent.</ResponseField>
+  </Tab>
+  <Tab title="Visibility">
+    <ResponseField name="hidden" type="boolean">When `true`, the shape is invisible on the canvas.</ResponseField>
+    <ResponseField name="visible" type="boolean">Inverse of `hidden` — writable shorthand.</ResponseField>
+    <ResponseField name="blocked" type="boolean">When `true`, the shape cannot be selected in the UI.</ResponseField>
+    <ResponseField name="opacity" type="number">Opacity from `0` (transparent) to `1` (opaque).</ResponseField>
+    <ResponseField name="blendMode" type="string">CSS-style blend mode (e.g. `'normal'`, `'multiply'`, `'screen'`).</ResponseField>
+  </Tab>
+  <Tab title="Transform">
+    <ResponseField name="rotation" type="number">Rotation angle in degrees around the shape's center.</ResponseField>
+    <ResponseField name="flipX" type="boolean">Horizontal mirror.</ResponseField>
+    <ResponseField name="flipY" type="boolean">Vertical mirror.</ResponseField>
+    <ResponseField name="proportionLock" type="boolean">Locks aspect ratio when resizing.</ResponseField>
+  </Tab>
+  <Tab title="Constraints">
+    <ResponseField name="constraintsHorizontal" type="'left' | 'right' | 'leftright' | 'center' | 'scale'">
+      How the shape responds to its container resizing horizontally.
+    </ResponseField>
+    <ResponseField name="constraintsVertical" type="'top' | 'bottom' | 'topbottom' | 'center' | 'scale'">
+      How the shape responds to its container resizing vertically.
+    </ResponseField>
+    <ResponseField name="fixedWhenScrolling" type="boolean">
+      When `true`, the shape stays fixed while the prototype is scrolled.
+    </ResponseField>
+  </Tab>
+  <Tab title="Appearance">
+    <ResponseField name="fills" type="Fill[] | 'mixed'">
+      Array of fill objects. See the [Fill](#fill) section. `'mixed'` when shapes with different fills are grouped.
+    </ResponseField>
+    <ResponseField name="strokes" type="Stroke[]">Array of stroke objects. See the [Stroke](#stroke) section.</ResponseField>
+    <ResponseField name="shadows" type="Shadow[]">Array of shadow effects.</ResponseField>
+    <ResponseField name="blur" type="Blur | undefined">Blur filter applied to the shape.</ResponseField>
+    <ResponseField name="backgroundBlur" type="Blur | undefined">Backdrop blur (blurs content behind the shape).</ResponseField>
+    <ResponseField name="borderRadius" type="number">Uniform border radius in pixels.</ResponseField>
+    <ResponseField name="borderRadiusTopLeft" type="number">Per-corner radius.</ResponseField>
+    <ResponseField name="borderRadiusTopRight" type="number">Per-corner radius.</ResponseField>
+    <ResponseField name="borderRadiusBottomRight" type="number">Per-corner radius.</ResponseField>
+    <ResponseField name="borderRadiusBottomLeft" type="number">Per-corner radius.</ResponseField>
+  </Tab>
+</Tabs>
+
+---
+
+## Common shape methods
+
+```ts
+// Resize the shape
+shape.resize(200, 100);
+
+// Rotate by angle (degrees); optional center point
+shape.rotate(45);
+shape.rotate(30, { x: 0, y: 0 });
+
+// Z-order
+shape.bringToFront();
+shape.bringForward();
+shape.sendToBack();
+shape.sendBackward();
+
+// Move to a specific index within siblings
+shape.setParentIndex(2);
+
+// Clone
+const copy = shape.clone();
+
+// Remove from page
+shape.remove();
+
+// Export as image bytes
+const png = await shape.export({ type: 'png', scale: 2 });
+
+// Wait for layout engine to settle
+await shape.waitForLayoutUpdate();
+```
+
+---
+
+## Fill
+
+A `Fill` object defines a single fill layer. Shapes can have multiple fills stacked on top of each other.
+
+<Expandable title="Fill properties">
+  <ResponseField name="fillColor" type="string">Hex colour string, e.g. `'#FF5733'`.</ResponseField>
+  <ResponseField name="fillOpacity" type="number">Opacity from `0` to `1`.</ResponseField>
+  <ResponseField name="fillColorGradient" type="Gradient">A linear or radial gradient.</ResponseField>
+  <ResponseField name="fillImage" type="ImageData">An image fill (use `penpot.uploadMediaUrl()` to create `ImageData`).</ResponseField>
+  <ResponseField name="fillColorRefFile" type="string">External file reference for library colors.</ResponseField>
+  <ResponseField name="fillColorRefId" type="string">ID within the external file for library colors.</ResponseField>
+</Expandable>
+
+```ts
+// Solid fill
+rect.fills = [{ fillColor: '#007AFF', fillOpacity: 1 }];
+
+// Linear gradient fill
+rect.fills = [{
+  fillColorGradient: {
+    type: 'linear',
+    startX: 0, startY: 0,
+    endX: 0,   endY: 1,
+    width: 1,
+    stops: [
+      { color: '#FF0080', opacity: 1, offset: 0 },
+      { color: '#7928CA', opacity: 1, offset: 1 },
+    ],
+  },
+}];
+
+// Image fill
+const img = await penpot.uploadMediaUrl('photo', 'https://example.com/photo.jpg');
+rect.fills = [{ fillOpacity: 1, fillImage: img }];
+
+// Multiple fills (stacked)
+rect.fills = [
+  { fillColor: '#FFFFFF' },
+  { fillColor: '#007AFF', fillOpacity: 0.2 },
+];
+```
+
+---
+
+## Stroke
+
+<Expandable title="Stroke properties">
+  <ResponseField name="strokeColor" type="string">Hex colour string.</ResponseField>
+  <ResponseField name="strokeOpacity" type="number">Opacity `0`–`1`.</ResponseField>
+  <ResponseField name="strokeStyle" type="'solid' | 'dotted' | 'dashed' | 'mixed' | 'none' | 'svg'">Line style.</ResponseField>
+  <ResponseField name="strokeWidth" type="number">Width in pixels.</ResponseField>
+  <ResponseField name="strokeAlignment" type="'center' | 'inner' | 'outer'">Position of the stroke relative to the edge.</ResponseField>
+  <ResponseField name="strokeCapStart" type="StrokeCap">Cap at the start of open paths.</ResponseField>
+  <ResponseField name="strokeCapEnd" type="StrokeCap">Cap at the end of open paths.</ResponseField>
+  <ResponseField name="strokeColorGradient" type="Gradient">Gradient stroke.</ResponseField>
+  <ResponseField name="strokeImage" type="ImageData">Image stroke.</ResponseField>
+</Expandable>
+
+```ts
+shape.strokes = [{
+  strokeColor: '#2E3434',
+  strokeOpacity: 1,
+  strokeStyle: 'solid',
+  strokeWidth: 2,
+  strokeAlignment: 'outer',
+}];
+```
+
+---
+
+## Board (Frame) specifics
+
+A `Board` is a frame/artboard — the primary container for organising designs and prototyping flows.
+
+<ResponseField name="type" type="'board'">Always `'board'`.</ResponseField>
+<ResponseField name="children" type="Shape[]">Writable array of child shapes. You can reorder children by assigning a new sorted array; you cannot change which shapes are children via this property.</ResponseField>
+<ResponseField name="clipContent" type="boolean">When `true`, content that overflows the board boundary is clipped.</ResponseField>
+<ResponseField name="showInViewMode" type="boolean">Controls whether the board appears as a screen in the prototype viewer.</ResponseField>
+<ResponseField name="guides" type="Guide[]">Column, row, or square grid guides on the board.</ResponseField>
+<ResponseField name="rulerGuides" type="RulerGuide[]">Read-only ruler guides attached to this board.</ResponseField>
+<ResponseField name="grid" type="GridLayout | undefined">Active grid layout, or `undefined` if none.</ResponseField>
+<ResponseField name="flex" type="FlexLayout | undefined">Active flex layout, or `undefined` if none.</ResponseField>
+<ResponseField name="horizontalSizing" type="'auto' | 'fix'">How the board sizes itself horizontally.</ResponseField>
+<ResponseField name="verticalSizing" type="'auto' | 'fix'">How the board sizes itself vertically.</ResponseField>
+
+```ts
+const board = penpot.createBoard();
+board.resize(1440, 900);
+
+// Add children
+const header = penpot.createRectangle();
+board.appendChild(header);
+
+const nav = penpot.createRectangle();
+board.insertChild(0, nav);  // insert at index 0
+
+// Reorder children
+board.children = board.children.reverse();
+
+// Layouts
+const flex = board.addFlexLayout();
+flex.dir = 'row';
+flex.wrap = 'wrap';
+flex.alignItems = 'center';
+flex.justifyContent = 'space-between';
+flex.horizontalPadding = 24;
+flex.rowGap = 16;
+
+const grid = board.addGridLayout();
+grid.addRow('flex', 1);
+grid.addColumn('percent', 50);
+grid.addColumn('percent', 50);
+
+// Ruler guides
+board.addRulerGuide('vertical', 720);
+```
+
+---
+
+## Group specifics
+
+<ResponseField name="type" type="'group'">Always `'group'`.</ResponseField>
+<ResponseField name="children" type="Shape[]">Read-only array of child shapes.</ResponseField>
+
+```ts
+// Group shapes
+const group = penpot.group(penpot.selection);
+
+// Check if acting as a mask
+if (group && group.isMask()) {
+  group.removeMask();
+} else if (group) {
+  group.makeMask();  // first child becomes the clipping mask
+}
+
+// Ungroup
+if (group) penpot.ungroup(group);
+```
+
+---
+
+## Text specifics
+
+<ResponseField name="type" type="'text'">Always `'text'`.</ResponseField>
+<ResponseField name="characters" type="string">The full text content.</ResponseField>
+<ResponseField name="growType" type="'fixed' | 'auto-width' | 'auto-height'">How the text box resizes around its content.</ResponseField>
+<ResponseField name="fontId" type="string | 'mixed'">Font identifier, or `'mixed'` when multiple fonts are used.</ResponseField>
+<ResponseField name="fontFamily" type="string | 'mixed'">Font family name.</ResponseField>
+<ResponseField name="fontVariantId" type="string | 'mixed'">Font variant identifier.</ResponseField>
+<ResponseField name="fontSize" type="string | 'mixed'">Font size as a string (e.g. `'16'`).</ResponseField>
+<ResponseField name="fontWeight" type="string | 'mixed'">Font weight string (e.g. `'400'`, `'700'`).</ResponseField>
+<ResponseField name="fontStyle" type="'normal' | 'italic' | 'mixed' | null">Style variant.</ResponseField>
+<ResponseField name="lineHeight" type="string | 'mixed'">Line-height value.</ResponseField>
+<ResponseField name="letterSpacing" type="string | 'mixed'">Letter spacing value.</ResponseField>
+<ResponseField name="textTransform" type="string | null">One of `'uppercase'`, `'capitalize'`, `'lowercase'`, or `null`.</ResponseField>
+<ResponseField name="textDecoration" type="string | null">`'underline'`, `'line-through'`, or `null`.</ResponseField>
+<ResponseField name="align" type="string | null">Horizontal text alignment.</ResponseField>
+<ResponseField name="verticalAlign" type="'top' | 'center' | 'bottom' | null">Vertical text alignment.</ResponseField>
+<ResponseField name="direction" type="'ltr' | 'rtl' | 'mixed' | null">Text direction.</ResponseField>
+<ResponseField name="textBounds" type="{ x, y, width, height }">Read-only actual rendered bounding box of the text.</ResponseField>
+
+```ts
+const text = penpot.createText('Button label');
+if (text) {
+  text.fontSize = '14';
+  text.fontWeight = '600';
+  text.align = 'center';
+  text.fills = [{ fillColor: '#FFFFFF' }];
+
+  // Style a specific range
+  const range = text.getRange(0, 6);
+  range.fontSize = '18';
+  range.fills = [{ fillColor: '#FFD700' }];
+
+  // Apply a library typography preset
+  const typo = penpot.library.local.typographies[0];
+  if (typo) text.applyTypography(typo);
+}
+```
+
+---
+
+## Path specifics
+
+<ResponseField name="type" type="'path'">Always `'path'`.</ResponseField>
+<ResponseField name="d" type="string">SVG path data string (read/write).</ResponseField>
+<ResponseField name="commands" type="PathCommand[]">The parsed path as an array of command objects (read/write).</ResponseField>
+
+```ts
+const path = penpot.createPath();
+// Assign via SVG d string
+path.d = 'M 0 0 L 200 0 L 100 150 Z';
+
+// Or manipulate individual commands
+path.commands = [
+  { command: 'M', params: { x: 0,   y: 0   } },
+  { command: 'L', params: { x: 200, y: 0   } },
+  { command: 'L', params: { x: 100, y: 150 } },
+  { command: 'Z' },
+];
+```
+
+<Warning>
+  The `content` property and `toD()` method on `Path` and `Boolean` are deprecated. Use the `d` property instead.
+</Warning>
+
+---
+
+## Boolean shape specifics
+
+<ResponseField name="type" type="'boolean'">Always `'boolean'`.</ResponseField>
+<ResponseField name="d" type="string">Resulting path data string (read-only).</ResponseField>
+<ResponseField name="commands" type="PathCommand[]">Resulting path commands (read-only).</ResponseField>
+<ResponseField name="children" type="Shape[]">The source shapes (read-only).</ResponseField>
+
+---
+
+## Plugin data on shapes
+
+Every shape implements `PluginData`, letting you store and retrieve plugin-specific metadata:
+
+```ts
+// Write data scoped to your plugin
+shape.setPluginData('color-token', 'brand.primary');
+
+// Read it back
+const token = shape.getPluginData('color-token');
+
+// List all keys your plugin has stored
+const keys = shape.getPluginDataKeys();
+
+// Share data with another plugin (if you know its namespace)
+shape.setSharedPluginData('my-namespace', 'key', 'value');
+const value = shape.getSharedPluginData('my-namespace', 'key');
+```
+
+---
+
+## Component instances
+
+```ts
+// Check component context
+shape.isComponentInstance();      // inside any instance?
+shape.isComponentCopyInstance();  // inside a copy?
+shape.isComponentMainInstance();  // inside the main?
+shape.isComponentRoot();          // is the root of a tree?
+
+// Get the linked component
+const comp = shape.component();
+if (comp) {
+  console.log(comp.name, comp.id);
+}
+
+// Get the equivalent shape in the main component
+const refShape = shape.componentRefShape();
+
+// Swap for a different component
+shape.swapComponent(otherComponent);
+
+// Reset all overrides back to the main
+shape.resetOverrides();
+
+// Detach from component entirely
+shape.detach();
+```
+
+---
+
+## Interactions (prototyping)
+
+```ts
+// Read interactions
+shape.interactions.forEach(i => console.log(i.trigger, i.action.type));
+
+// Add a navigation interaction
+shape.addInteraction('click', {
+  type: 'navigate-to',
+  destination: targetBoard,
+});
+
+// Add an overlay
+shape.addInteraction('click', {
+  type: 'open-overlay',
+  destination: overlayBoard,
+  position: 'center',
+  closeWhenClickOutside: true,
+});
+
+// Remove
+shape.removeInteraction(shape.interactions[0]);
+```
+
+---
+
+## Type guard helpers
+
+```ts
+const { types } = penpot.utils;
+
+types.isBoard(shape)       // shape is Board
+types.isGroup(shape)       // shape is Group
+types.isMask(shape)        // shape is Group (acting as mask)
+types.isBool(shape)        // shape is Boolean
+types.isRectangle(shape)   // shape is Rectangle
+types.isPath(shape)        // shape is Path
+types.isText(shape)        // shape is Text
+types.isEllipse(shape)     // shape is Ellipse
+types.isSVG(shape)         // shape is SvgRaw
+types.isVariantContainer(shape)   // shape is VariantContainer
+```
+
+---
+
+## Alignment & distribution helpers
+
+```ts
+penpot.alignHorizontal(shapes, 'left');   // | 'center' | 'right'
+penpot.alignVertical(shapes, 'top');      // | 'center' | 'bottom'
+penpot.distributeHorizontal(shapes);
+penpot.distributeVertical(shapes);
+```
+
+---
+
+## Full board layout example
+
+```ts
+// Build a responsive card grid
+const board = penpot.createBoard();
+board.name = 'Card Grid';
+board.resize(1440, 900);
+
+const grid = board.addGridLayout();
+grid.addRow('flex', 1);
+grid.addColumn('flex', 1);
+grid.addColumn('flex', 1);
+grid.addColumn('flex', 1);
+grid.columnGap = 24;
+grid.rowGap = 24;
+grid.horizontalPadding = 48;
+grid.verticalPadding = 48;
+
+for (let i = 0; i < 3; i++) {
+  const card = penpot.createRectangle();
+  card.name = `Card ${i + 1}`;
+  card.fills = [{ fillColor: '#FFFFFF' }];
+  card.borderRadius = 12;
+  card.shadows = [{
+    style: 'drop-shadow',
+    offsetX: 0,
+    offsetY: 4,
+    blur: 16,
+    spread: 0,
+    color: { color: '#000000', opacity: 0.08 },
+  }];
+  grid.appendChild(card, 0, i);
+}
+
+await penpot.waitForLayoutUpdate();
+```

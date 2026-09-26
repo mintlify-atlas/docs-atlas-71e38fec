@@ -1,0 +1,332 @@
+---
+title: "Connect AI Agents to Penpot with the MCP Server"
+sidebarTitle: "MCP Server"
+description: "Set up the Penpot MCP server to let AI agents read, modify, and export your Penpot designs using natural language prompts."
+---
+
+The Penpot MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/) to connect any MCP-compatible AI client — Cursor, Claude Code, Claude Desktop, and similar tools — directly to your open Penpot design files. Once connected, an agent can read file structure, create and rename layers, apply tokens, export assets, and generate HTML/CSS, all in response to plain-language prompts.
+
+<Info>
+  A quick-start guide and setup videos are available at [help.penpot.app](https://help.penpot.app/mcp/). The MCP server source code lives in the [Penpot repository](https://github.com/penpot/penpot/tree/main/mcp) under the `mcp/` directory.
+</Info>
+
+## What you can do
+
+Penpot MCP enables multi-directional workflows between design and code. Because the agent can read and modify file structure — components, styles, tokens, pages, layers, and more — you can automate both creative and maintenance tasks.
+
+<CardGroup cols={2}>
+  <Card title="Design tasks" icon="paintbrush">
+    Create and apply spacing, typography, and color tokens; generate component variants; rename layers to match a naming scheme; audit design system consistency; apply palette-wide visual changes; build new screens from an existing design system.
+  </Card>
+  <Card title="Developer tasks" icon="code">
+    Extract layout structure and UI metadata; generate semantic HTML/CSS from designs; inspect tokens and translate them to code variables; export only the assets used in a file; map component names to code identifiers; prototype interactions.
+  </Card>
+</CardGroup>
+
+## Architecture overview
+
+Three pieces work together:
+
+- **MCP server** — Exposes tools to your AI client. Receives requests and forwards them to Penpot via a WebSocket connection.
+- **Penpot MCP plugin** — Runs inside Penpot in your browser. Connects the currently focused page to the MCP server and executes tasks using the Plugin API.
+- **MCP client** — Where you write prompts (Cursor, Claude Code, etc.). Connects to the server URL with your MCP key.
+
+The agent writes arbitrary JavaScript that runs inside the Penpot Plugin environment, which is how it can read and modify live design data in real time.
+
+<Warning>
+  When MCP is connected, your AI client can execute **write operations** that change the currently open Penpot page. Always start with read-only prompts to verify the setup, and ask the agent to describe intended changes before applying them.
+</Warning>
+
+## Remote vs local MCP
+
+<CardGroup cols={2}>
+  <Card title="Remote MCP (recommended)" icon="cloud">
+    Hosted by Penpot — no local installation required. Configured via **Your account → Integrations → MCP Server**. Does not have access to your local file system.
+  </Card>
+  <Card title="Local MCP" icon="computer">
+    Runs on your machine via `npx`. Requires Node.js 20+. Can read and write local files. Intended for advanced users who need local asset access.
+  </Card>
+</CardGroup>
+
+---
+
+## Quick start: Remote MCP in 5 steps
+
+<Steps>
+  <Step title="Enable MCP in Penpot">
+    Go to **Your account → Integrations → MCP Server** and toggle **Status** to **Enabled**.
+  </Step>
+  <Step title="Generate your MCP key">
+    If you do not have a key yet, create one. The key is shown **only once** — copy it to a safe location immediately. Treat it like a password: do not share it in screenshots, logs, or code.
+  </Step>
+  <Step title="Copy the server URL">
+    In the same Integrations section, copy the **server URL**. It has the form:
+    ```
+    https://<your-penpot-domain>/mcp/stream?userToken=YOUR_MCP_KEY
+    ```
+    For the Penpot SaaS the domain is `design.penpot.app`.
+  </Step>
+  <Step title="Add the server to your MCP client">
+    Use the `add-mcp` helper to configure supported clients automatically:
+
+    ```shell
+    npx -y add-mcp -g -n penpot "https://design.penpot.app/mcp/stream?userToken=YOUR_MCP_KEY"
+    ```
+
+    For **Claude Desktop**, add the server as a custom [connector](https://claude.ai/customize/connectors) using the URL above. For clients that support only stdio transport, use `mcp-remote` as a proxy (see below).
+  </Step>
+  <Step title="Open a Penpot file and connect the plugin">
+    In Penpot, open any design file and select **File → MCP Server → Connect**. The plugin window must remain open during your session.
+  </Step>
+</Steps>
+
+Once all five steps are done, your AI client will list Penpot tools. Run a read-only prompt first to confirm everything works.
+
+---
+
+## Local MCP setup
+
+<Steps>
+  <Step title="Ensure Node.js is installed">
+    Node.js 20 or later is required. Version 22.x is recommended.
+
+    ```shell
+    node --version
+    ```
+  </Step>
+  <Step title="Start the MCP and plugin servers">
+    ```shell
+    npx -y @penpot/mcp@stable
+    ```
+    Leave this terminal running. It starts two servers:
+    - **MCP server** at `http://localhost:4401/mcp`
+    - **Plugin web server** at `http://localhost:4400`
+  </Step>
+  <Step title="Load the plugin in Penpot">
+    Open Penpot in your browser, navigate to a design file, open **Plugins → Load from URL**, and enter:
+    ```
+    http://localhost:4400/manifest.json
+    ```
+    Open the plugin and click **Connect to MCP server**. The status should change to **Connected**.
+  </Step>
+  <Step title="Configure your MCP client">
+    ```shell
+    npx -y add-mcp -g -n penpot http://localhost:4401/mcp
+    ```
+    For Claude Desktop or other stdio-only clients, use `mcp-remote` as a proxy:
+
+    ```json
+    {
+      "mcpServers": {
+        "penpot": {
+          "command": "npx",
+          "args": ["-y", "mcp-remote", "http://localhost:4401/mcp", "--allow-http"]
+        }
+      }
+    }
+    ```
+
+    Add this to the Claude Desktop configuration file:
+    - **Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
+    - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+    - **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+    Fully restart Claude Desktop after saving the file.
+  </Step>
+</Steps>
+
+<Note>
+  Chromium-based browsers may block connections from `https://design.penpot.app` to `http://localhost`. Allow local network access when prompted, or use Firefox if your browser blocks the connection.
+</Note>
+
+---
+
+## Available MCP tools
+
+The MCP server exposes the following tools to the AI agent. You generally do not call these directly — the agent selects and invokes them based on your prompts.
+
+<Accordion title="execute_code">
+  Executes arbitrary JavaScript code inside the Penpot Plugin context. This is the primary tool for reading and modifying design data. The agent has access to `penpot` (the Plugin API), `penpotUtils` (utility helpers), and `storage` (persistent in-session state across calls).
+
+  The agent returns whatever JavaScript value you `return` from the code snippet, making it possible to query shapes, read tokens, restructure layers, or create new elements.
+</Accordion>
+
+<Accordion title="high_level_overview">
+  Returns a high-level description of the Penpot Plugin API and available capabilities. The agent calls this automatically before executing code to orient itself within the API surface. No input required.
+</Accordion>
+
+<Accordion title="penpot_api_info">
+  Returns API documentation for a specific Penpot type and, optionally, one of its members. Used by the agent to look up property names, method signatures, and type constraints before writing code.
+
+  **Parameters:**
+  - `type` (string, required) — The API type name (e.g. `PenpotShape`, `PenpotPage`).
+  - `member` (string, optional) — A specific member to look up within the type.
+</Accordion>
+
+<Accordion title="export_shape">
+  Exports a shape (or a shape's image fill) as a PNG or SVG image. The result can be returned directly to the AI client for visual inspection, or saved to a local file path (local MCP only).
+
+  **Parameters:**
+  - `shapeId` (string, required) — UUID of the shape, or the special values `selection` (first selected shape) or `page` (entire current page).
+  - `format` (`png` | `svg`, default `png`) — Output image format.
+  - `mode` (`shape` | `fill`, default `shape`) — Export the full shape or just the raw image fill.
+  - `filePath` (string, optional, local MCP only) — Absolute path to save the exported file.
+</Accordion>
+
+<Accordion title="import_image (local MCP only)">
+  Imports a local image file into the current Penpot file. Not available in remote MCP mode because remote mode does not have access to the local file system.
+</Accordion>
+
+---
+
+## First prompts to try
+
+After connecting, start with **read-only prompts** to confirm the connection and understand what the agent can see:
+
+```
+List all pages in this file.
+```
+```
+Show me all components on this page and summarize their structure.
+```
+```
+List the color styles in this file and describe how they are used.
+```
+```
+Analyze the spacing and typography tokens defined in this design system.
+```
+
+When you are confident the setup is working, move to **light write operations**:
+
+```
+Rename all layers that currently have auto-generated names (e.g. "Rectangle 23")
+to descriptive names. Describe the changes before applying them.
+```
+```
+Create a color token set for primary, secondary, and semantic states based on
+the colors used on this page.
+```
+```
+Generate semantic HTML and CSS for the "Card" component on this page.
+Map any Penpot tokens to CSS custom properties.
+```
+
+---
+
+## Prompting best practices
+
+Good prompts produce better, more reliable results. The guidelines below are drawn from the [Penpot prompting documentation](https://help.penpot.app/mcp/good-prompting-practices-design/).
+
+### Define the agent's role clearly
+
+Vague personas produce vague results. Be specific about seniority and constraints.
+
+| ❌ Vague | ✅ Specific |
+|---|---|
+| "You are a creative designer." | "You are a Senior Product Designer. You are an expert in design systems and WCAG accessibility. You do not make product decisions without data." |
+
+### Structure prompts like a brief
+
+Every design prompt should include:
+- **Context** — What product is this? Who is the user?
+- **Goal** — What specific problem are we solving? (e.g. "Improve the visual hierarchy of the login form.")
+- **Inputs** — Reference specific frames, tokens, or documentation.
+- **Constraints** — "Only use existing components," "WCAG AA contrast," "no new color values."
+- **Quality criteria** — How do you know the work is done?
+
+### Tell the agent what NOT to do
+
+Explicit negatives prevent the agent from going off-script:
+
+```
+Do not add new navigation patterns.
+Do not modify the visual identity.
+Do not invent colors outside the existing token set.
+```
+
+### Work iteratively, not in one shot
+
+Ask for concrete transformations on existing content rather than open-ended redesigns:
+
+```
+Adjust the visual hierarchy of this form.
+Reduce noise by removing unnecessary borders.
+Normalize spacing using only tokens from /core/spacing.
+```
+
+### Use token-aware prompts to reduce overhead
+
+Structure constraints as compact key-value rules rather than prose to keep context windows efficient:
+
+```
+GLOBAL RULESET
+- SOURCE: Penpot MCP only
+- NO_GUESSING
+- IF_MISSING: mark as TODO
+- PREFER: structured data over prose
+- OUTPUT: deterministic, stable ordering
+```
+
+---
+
+## Keep the Penpot tab active
+
+The MCP plugin runs inside your Penpot browser tab. If the browser suspends or unloads the tab, the MCP server cannot run tasks until the tab wakes up. The server fails fast in this case rather than waiting for a long timeout.
+
+| Browser | Recommended setting |
+|---|---|
+| Chrome | **Settings → Performance → Always keep these sites active** — add your Penpot site. Pinning the tab also helps. |
+| Edge | **Settings → System and performance** — add your Penpot site to the "never sleep" list. |
+| Firefox | No per-site keep-awake control. Advanced users can set `browser.tabs.unloadOnLowMemory=false` in `about:config`. |
+| Safari | Keep the Penpot tab open and in the foreground during long sessions. |
+
+---
+
+## Design file best practices for MCP
+
+Well-structured files give the agent more reliable context. Follow these conventions for best results, based on the [Penpot file structure guide](https://help.penpot.app/mcp/design-file-structure-best-practices/).
+
+- **Name layers by function**, not appearance: ✅ `background`, `title`, `icon` — not ❌ `rectangle 23`.
+- **Use hierarchical component names** with `/` separators: `button/primary/default`, `form/input/text/focus`.
+- **Avoid hard-coded values** — all colors, spacing, and typography should come from tokens.
+- **Limit nesting depth** to 3–4 levels to keep the layer tree readable by both humans and agents.
+- **Organize boards by feature area**, not screen: "Onboarding," "Dashboard," "Settings."
+- **Use layout** (Flex or Grid) consistently rather than absolute positioning with invisible spacers.
+
+---
+
+## Security considerations
+
+- **MCP key** — Treat it like a password. It is shown only once and cannot be recovered. Regenerate it immediately if you suspect it has leaked.
+- **Disable MCP when not in use** — Use the Status toggle in **Your account → Integrations → MCP Server** to stop agents from accessing your files.
+- **Disconnect the plugin** — Even with MCP enabled, disconnecting the plugin from **File → MCP Server → Disconnect** prevents write operations on the current file.
+- **One key per user** — Only one MCP key can exist at a time. Regenerating a key immediately revokes the previous one.
+
+---
+
+## Troubleshooting
+
+If the connection fails, work through this checklist:
+
+1. Restart the MCP server process (local) or toggle the Status in Integrations (remote).
+2. Reload the plugin in Penpot and click **Connect to MCP server** again.
+3. Fully restart your MCP client (Cursor, Claude Desktop, etc.).
+4. Ensure the Penpot browser tab is active and not suspended.
+
+For additional help, open an issue on [GitHub](https://github.com/penpot/penpot/issues/new/choose), post at the [Penpot Community](https://community.penpot.app/), or email [support@penpot.app](mailto:support@penpot.app).
+
+---
+
+## Environment variables (local MCP)
+
+<Accordion title="Server configuration">
+  | Variable | Description | Default |
+  |---|---|---|
+  | `PENPOT_MCP_SERVER_HOST` | Address the MCP server listens on | `localhost` |
+  | `PENPOT_MCP_SERVER_PORT` | Port for the MCP Streamable HTTP endpoint | `4401` |
+  | `PENPOT_MCP_WEBSOCKET_PORT` | Port for the WebSocket server (plugin connection) | `4402` |
+  | `PENPOT_MCP_REMOTE_MODE` | Enable remote mode (disables local file system access) | `false` |
+  | `PENPOT_MCP_TOOL_TIMEOUT_S` | Timeout in seconds for tool calls dispatched to the plugin | `120` |
+  | `PENPOT_MCP_LOG_LEVEL` | Log level: `trace`, `debug`, `info`, `warn`, `error` | `info` |
+  | `PENPOT_MCP_LOG_DIR` | Directory for log files; file logging only active when set | (unset) |
+</Accordion>

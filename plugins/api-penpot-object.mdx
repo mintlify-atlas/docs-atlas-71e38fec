@@ -1,0 +1,435 @@
+---
+title: "Penpot Plugin API: The penpot Global Object"
+sidebarTitle: "penpot Object"
+description: "Complete reference for the penpot global object — file access, page navigation, shape creation, selection, history, and utility helpers for Penpot plugins."
+---
+
+The `penpot` global object is the main entry point for every Penpot plugin. It is automatically available in your `plugin.ts` file without any import — just reference `penpot` directly. It exposes the active file, the current page, the canvas selection, the viewport, theme information, and all shape-creation helpers.
+
+<Note>
+  The `penpot` global is an instance of the `Penpot` interface, which extends `Context` (omitting the lower-level `addListener` / `removeListener` in favour of the friendlier `on` / `off` pair).
+</Note>
+
+---
+
+## Core read-only properties
+
+These properties reflect the current state of the workspace. They require at least the `content:read` permission unless noted otherwise.
+
+<ResponseField name="penpot.version" type="string" required>
+  Returns the running Penpot version string.
+
+  ```ts
+  console.log(penpot.version); // e.g. "2.4.0"
+  ```
+</ResponseField>
+
+<ResponseField name="penpot.currentFile" type="File | null" required>
+  The file that is currently open in the workspace. Returns `null` when no file is active.
+
+  ```ts
+  const file = penpot.currentFile;
+  if (file) {
+    console.log(file.name, file.id);
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="penpot.currentPage" type="Page | null" required>
+  The page that is currently active. Returns `null` if no page is loaded.
+
+  ```ts
+  const page = penpot.currentPage;
+  console.log(page?.name);
+  ```
+</ResponseField>
+
+<ResponseField name="penpot.root" type="Shape | null" required>
+  The invisible root shape for the current page — the ancestor of every shape on the canvas.
+</ResponseField>
+
+<ResponseField name="penpot.selection" type="Shape[]" required>
+  The shapes that are currently selected on the canvas. You can also **write** to this property to programmatically change the selection.
+
+  ```ts
+  // Read the current selection
+  const selected = penpot.selection;
+  console.log(`${selected.length} shape(s) selected`);
+
+  // Replace the selection
+  penpot.selection = [someShape];
+  ```
+</ResponseField>
+
+<ResponseField name="penpot.viewport" type="Viewport" required>
+  The current viewport state, including `center`, `zoom`, and `bounds`.
+
+  ```ts
+  console.log(penpot.viewport.zoom);   // e.g. 1 (= 100 %)
+  penpot.viewport.zoomToFitAll();      // fit every shape in view
+  ```
+</ResponseField>
+
+<ResponseField name="penpot.theme" type="'light' | 'dark'" required>
+  The active UI theme chosen by the user.
+
+  ```ts
+  if (penpot.theme === 'dark') {
+    // apply dark colour scheme to your plugin UI
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="penpot.library" type="LibraryContext" required>
+  Access to the local and connected shared libraries (colors, typographies, components). Requires `library:read` permission.
+</ResponseField>
+
+<ResponseField name="penpot.fonts" type="FontsContext" required>
+  Methods to find fonts by id or name. Requires `content:read` permission.
+</ResponseField>
+
+<ResponseField name="penpot.currentUser" type="User" required>
+  The user who is running the plugin. Requires `user:read` permission.
+</ResponseField>
+
+<ResponseField name="penpot.activeUsers" type="ActiveUser[]" required>
+  All users currently collaborating in the same file, with their canvas position and zoom level. Requires `user:read` permission.
+</ResponseField>
+
+<ResponseField name="penpot.history" type="HistoryContext" required>
+  Provides `undoBlockBegin()` and `undoBlockFinish()` to group multiple operations into a single undo step. See the [History](#history) section below.
+</ResponseField>
+
+<ResponseField name="penpot.utils" type="ContextUtils" required>
+  Geometry helpers (`penpot.utils.geometry`) and type guards (`penpot.utils.types`).
+</ResponseField>
+
+<ResponseField name="penpot.localStorage" type="LocalStorage" required>
+  A sandboxed key/value store scoped to your plugin. Requires `allow:localstorage` permission.
+</ResponseField>
+
+<ResponseField name="penpot.flags" type="Flags" required>
+  Runtime flags to adjust API behaviour (e.g. `naturalChildOrdering`, `throwValidationErrors`).
+</ResponseField>
+
+---
+
+## File access
+
+<Tabs>
+  <Tab title="currentFile">
+    Read the currently open file:
+
+    ```ts
+    const file = penpot.currentFile;
+    if (file) {
+      console.log(file.id, file.name, file.revn);
+      console.log(file.pages); // Page[]
+    }
+    ```
+  </Tab>
+  <Tab title="Export a file">
+    ```ts
+    const file = penpot.currentFile!;
+    const bytes = await file.export('penpot', 'include-libraries');
+    // bytes is Uint8Array — send it to your server or trigger a download
+    ```
+  </Tab>
+  <Tab title="File versions">
+    ```ts
+    const file = penpot.currentFile!;
+    const version = await file.saveVersion('Before refactor');
+    console.log(version.label, version.createdAt);
+
+    const versions = await file.findVersions();
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Page access & navigation
+
+<Tabs>
+  <Tab title="Read current page">
+    ```ts
+    const page = penpot.currentPage;
+    if (page) {
+      console.log(page.id, page.name);
+      const shapes = page.findShapes({ type: 'board' });
+    }
+    ```
+  </Tab>
+  <Tab title="createPage()">
+    Creates a new page and returns it. The new page is **not** made active automatically — call `openPage` after to start adding shapes.
+
+    ```ts
+    const page = penpot.createPage();
+    page.name = 'Onboarding';
+    await penpot.openPage(page);   // make it active
+    const board = penpot.createBoard();
+    board.resize(375, 812);
+    ```
+  </Tab>
+  <Tab title="openPage()">
+    Switches the active page. Accepts a `Page` object or a page UUID string.
+
+    ```ts
+    // Navigate to an existing page by id
+    await penpot.openPage('some-page-uuid');
+
+    // Open in a new browser window
+    await penpot.openPage(page, true);
+    ```
+  </Tab>
+</Tabs>
+
+### Page interface at a glance
+
+<ResponseField name="page.id" type="string">Unique identifier.</ResponseField>
+<ResponseField name="page.name" type="string">Writable page name.</ResponseField>
+<ResponseField name="page.root" type="Shape">Root shape that is the parent of all top-level shapes.</ResponseField>
+<ResponseField name="page.rulerGuides" type="RulerGuide[]">All ruler guides on the page.</ResponseField>
+<ResponseField name="page.flows" type="Flow[]">Prototype flows defined on the page.</ResponseField>
+
+```ts
+// Find a shape by id
+const shape = penpot.currentPage?.getShapeById('abc-123');
+
+// Find all text shapes
+const texts = penpot.currentPage?.findShapes({ type: 'text' });
+
+// Remove a page (cannot remove the last page)
+const extra = penpot.createPage();
+extra.remove();
+```
+
+---
+
+## Shape creation
+
+All shape-creation methods require the `content:write` permission and add the new shape to the **current active page**.
+
+<Tabs>
+  <Tab title="Basic shapes">
+    ```ts
+    // Rectangle
+    const rect = penpot.createRectangle();
+    rect.name = 'Card background';
+    rect.x = 100;
+    rect.y = 100;
+    rect.resize(320, 200);
+    rect.fills = [{ fillColor: '#FFFFFF' }];
+    rect.borderRadius = 12;
+
+    // Ellipse
+    const circle = penpot.createEllipse();
+    circle.resize(48, 48);
+    circle.fills = [{ fillColor: '#FF5733', fillOpacity: 1 }];
+
+    // Path
+    const path = penpot.createPath();
+    path.d = 'M 0 0 L 100 0 L 50 100 Z';
+    path.fills = [{ fillColor: '#7EFFF5' }];
+    ```
+  </Tab>
+  <Tab title="Board (frame)">
+    A **board** is Penpot's name for a frame — the primary container.
+
+    ```ts
+    const board = penpot.createBoard();
+    board.name = 'Mobile – Home';
+    board.resize(375, 812);
+    board.fills = [{ fillColor: '#F5F5F5' }];
+
+    // Add flex layout
+    const flex = board.addFlexLayout();
+    flex.dir = 'column';
+    flex.alignItems = 'center';
+    flex.rowGap = 16;
+
+    // Nest shapes
+    const child = penpot.createRectangle();
+    board.appendChild(child);
+    ```
+  </Tab>
+  <Tab title="Text">
+    ```ts
+    const text = penpot.createText('Hello, Penpot!');
+    if (text) {
+      text.name = 'Heading';
+      text.fontSize = '32';
+      text.fontFamily = 'Work Sans';
+      text.fills = [{ fillColor: '#111111' }];
+      text.growType = 'auto-width';
+    }
+    ```
+  </Tab>
+  <Tab title="SVG & Boolean">
+    ```ts
+    // Create a group from an SVG string
+    const group = penpot.createShapeFromSvg('<svg>...</svg>');
+
+    // Async variant (supports embedded images)
+    const group2 = await penpot.createShapeFromSvgWithImages('<svg>...</svg>');
+
+    // Boolean operations
+    const union = penpot.createBoolean('union', [shape1, shape2]);
+    const diff  = penpot.createBoolean('difference', [shape1, shape2]);
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Selection helpers
+
+```ts
+// Read current selection
+const shapes = penpot.selection;
+
+// Group selected shapes
+const group = penpot.group(shapes);
+
+// Ungroup
+if (group && penpot.utils.types.isGroup(group)) {
+  penpot.ungroup(group);
+}
+
+// Align & distribute
+penpot.alignHorizontal(shapes, 'center');
+penpot.alignVertical(shapes, 'top');
+penpot.distributeHorizontal(shapes);
+
+// Flatten to paths
+const paths = penpot.flatten(shapes);
+```
+
+---
+
+## Media upload
+
+```ts
+// Upload from a URL
+const imgData = await penpot.uploadMediaUrl(
+  'hero-image',
+  'https://example.com/hero.png'
+);
+
+// Apply as fill
+const rect = penpot.createRectangle();
+rect.fills = [{ fillOpacity: 1, fillImage: imgData }];
+
+// Upload raw bytes
+const imgData2 = await penpot.uploadMediaData(
+  'icon',
+  new Uint8Array(/* ... */),
+  'image/png'
+);
+```
+
+---
+
+## Color utilities
+
+```ts
+// Read all colours used in the selection
+const colors = penpot.shapesColors(penpot.selection);
+console.log(colors); // (Color & ColorShapeInfo)[]
+
+// Replace a colour across shapes
+const oldColor = { color: '#FF0000' };
+const newColor = { color: '#00FF00' };
+penpot.replaceColor(penpot.selection, oldColor, newColor);
+```
+
+---
+
+## Code generation
+
+```ts
+const shapes = penpot.selection;
+
+// Generate HTML markup
+const html = penpot.generateMarkup(shapes, { type: 'html' });
+
+// Generate CSS styles
+const css = penpot.generateStyle(shapes, { type: 'css' });
+
+// Generate @font-face declarations
+const fontfaces = await penpot.generateFontFaces(shapes);
+```
+
+---
+
+## History
+
+Group multiple edits so they undo as a single action:
+
+```ts
+const blockId = penpot.history.undoBlockBegin();
+
+// ... perform multiple mutations ...
+const rect = penpot.createRectangle();
+rect.fills = [{ fillColor: '#ABC' }];
+rect.resize(100, 100);
+
+penpot.history.undoBlockFinish(blockId);
+// Pressing Ctrl+Z will undo all the above at once
+```
+
+---
+
+## Events
+
+Use `penpot.on()` to subscribe to workspace events and `penpot.off()` to unsubscribe. See the [Events API](/plugins/api-events) page for the full list of event types and payload shapes.
+
+```ts
+const id = penpot.on('selectionchange', (ids: string[]) => {
+  console.log('Selection changed:', ids);
+});
+
+// Later — always clean up when your plugin closes
+penpot.off(id);
+```
+
+---
+
+## Closing the plugin
+
+```ts
+penpot.closePlugin();
+```
+
+When called, the plugin's UI modal is closed and all event listeners are automatically torn down.
+
+---
+
+## Layout helpers
+
+```ts
+// Wait for all pending layout and component-sync work to settle
+await penpot.waitForLayoutUpdate();
+
+// Open the viewer panel
+penpot.openViewer();
+```
+
+---
+
+## Viewport control
+
+```ts
+const vp = penpot.viewport;
+
+// Pan to a specific coordinate
+vp.center = { x: 500, y: 300 };
+
+// Set zoom level (1 = 100 %)
+vp.zoom = 2;
+
+// Convenience methods
+vp.zoomReset();
+vp.zoomToFitAll();
+vp.zoomIntoView(penpot.selection);
+```

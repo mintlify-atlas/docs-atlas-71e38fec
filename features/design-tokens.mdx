@@ -1,0 +1,220 @@
+---
+title: "Design Tokens: Single Source of Truth for Design Systems"
+sidebarTitle: "Design Tokens"
+description: "Use Penpot's native design tokens to create a single source of truth between design and code — covering colors, spacing, typography, and more."
+---
+
+Design tokens are named values that represent the atomic decisions of a design system — a button's background color, a heading's font size, a card's border radius. Penpot includes **native design token support** that stores tokens directly inside your `.penpot` file as structured data, keeping design and code perfectly aligned without any external plugin or sync tool.
+
+## Why tokens matter
+
+Without tokens, a color like `#0066CC` is scattered across hundreds of shapes in dozens of files. When brand guidelines change, every shape must be updated individually. With tokens, that color lives once — as `color.primary` — and every shape that references it updates automatically when the token value changes.
+
+Penpot's design tokens are stored in `tokens.json` inside the `.penpot` archive and are modelled as a first-class library asset alongside colors, typographies, and components. They are part of the file data, not a bolt-on feature.
+
+## Token types
+
+Penpot's token engine maps directly to the [W3C Design Tokens Community Group](https://design-tokens.github.io/community-group/format/) (DTCG) format. Each token has a `type` that determines which shape attributes it can be applied to.
+
+| Penpot token type | W3C DTCG type | Applicable to |
+|---|---|---|
+| `color` | `color` | Fill color, stroke color |
+| `border-radius` | `borderRadius` | Corner radii (`r1`–`r4`) |
+| `spacing` | `spacing` | Padding (`p1`–`p4`), gap, margin |
+| `sizing` | `sizing` | Width, height, min/max dimensions |
+| `dimensions` | `dimension` | Width, height, padding, gap, margin, border radius, stroke width |
+| `opacity` | `opacity` | Shape opacity |
+| `font-size` | `fontSizes` | Text font size |
+| `font-weight` | `fontWeights` | Text font weight |
+| `font-family` | `fontFamilies` | Text font family |
+| `letter-spacing` | `letterSpacing` | Text letter spacing |
+| `typography` | `typography` | Composite: family + size + weight + spacing + line-height |
+| `shadow` | `shadow` | Drop shadow / inner shadow |
+| `stroke-width` | `borderWidth` | Stroke width (including per-side) |
+| `number` | `number` | Line height, rotation |
+| `rotation` | `rotation` | Shape rotation |
+
+<Info>
+  Penpot's token type names match the DTCG specification. During import/export the engine translates between Penpot's internal keyword names (e.g. `:font-size`) and DTCG string names (e.g. `"fontSizes"`) automatically, maintaining backwards compatibility.
+</Info>
+
+## Token sets and themes
+
+Tokens are organised into **sets** — named collections that can represent a brand tier, a platform, or a context (light mode, dark mode, etc.). Multiple sets can be combined into a **theme**, and a file can have many themes with one or more active at a time.
+
+```json
+{
+  "sets": {
+    "core": {
+      "id": "uuid-core",
+      "name": "Core",
+      "tokens": {
+        "color": {
+          "primary": {
+            "id": "uuid-primary",
+            "name": "primary",
+            "type": "color",
+            "value": "#0066CC"
+          },
+          "surface": {
+            "id": "uuid-surface",
+            "name": "surface",
+            "type": "color",
+            "value": "#F5F7FA"
+          }
+        },
+        "spacing": {
+          "sm": { "id": "uuid-sm", "name": "sm", "type": "spacing", "value": "8" },
+          "md": { "id": "uuid-md", "name": "md", "type": "spacing", "value": "16" },
+          "lg": { "id": "uuid-lg", "name": "lg", "type": "spacing", "value": "24" }
+        }
+      }
+    },
+    "brand-dark": {
+      "id": "uuid-dark",
+      "name": "Brand Dark",
+      "tokens": {
+        "color": {
+          "primary": {
+            "id": "uuid-primary-dark",
+            "name": "primary",
+            "type": "color",
+            "value": "#4DA6FF"
+          }
+        }
+      }
+    }
+  },
+  "themes": {
+    "light": { "id": "uuid-light", "name": "Light", "sets": ["core"] },
+    "dark":  { "id": "uuid-dark-theme", "name": "Dark", "sets": ["core", "brand-dark"] }
+  },
+  "activeThemes": ["light"]
+}
+```
+
+When the active theme switches from `light` to `dark`, every shape that has `color.primary` bound to its fill instantly re-renders with `#4DA6FF` instead of `#0066CC`.
+
+## Token references (aliases)
+
+Token values can reference other tokens using curly-brace syntax: `{color.primary}`. This lets you build **semantic token layers** on top of primitive tokens.
+
+```json
+"button": {
+  "background": {
+    "type": "color",
+    "value": "{color.primary}"
+  },
+  "padding-x": {
+    "type": "spacing",
+    "value": "{spacing.md}"
+  }
+}
+```
+
+Circular and self-references are detected and flagged with a validation error. The engine resolves reference chains at render time, so renaming a referenced token automatically updates all aliases.
+
+## Creating and editing tokens
+
+<Steps>
+  <Step title="Open the Tokens panel">
+    In the left sidebar, click the **Assets** tab (grid icon) and then select **Tokens** from the asset type tabs.
+  </Step>
+  <Step title="Create a token set">
+    Click **+ New set** and give it a descriptive name (e.g. `core`, `brand`, `semantic`).
+  </Step>
+  <Step title="Add a token">
+    Inside a set, click **+ Add token**. Fill in the token name, choose its type from the dropdown, and enter a value or reference. Token names use dot-notation for hierarchy: `color.primary.default`.
+  </Step>
+  <Step title="Apply a token to a shape">
+    Select one or more shapes on the canvas. In the Design panel on the right, click the token icon next to any compatible property (fill, padding, border radius, etc.) and pick the token from the popover. The shape's `applied-tokens` map is updated immediately.
+  </Step>
+  <Step title="Edit a token value">
+    Click any token in the tokens panel to edit its value. All shapes with that token applied update instantly on the canvas.
+  </Step>
+</Steps>
+
+<Warning>
+  Token names must start with a letter, number, hyphen, or underscore. They cannot start with `$` or end with a dot. The dot separator (`.`) creates a group hierarchy — `color.brand.primary` nests under `color` → `brand`.
+</Warning>
+
+## Applying tokens to shapes
+
+Each shape stores which tokens are applied to it in the `applied-tokens` map. The map keys are **token attribute names** (which differ slightly from shape attribute names) and values are the token name strings.
+
+```json
+{
+  "id": "shape-uuid",
+  "type": "rect",
+  "fills": [{ "fill-color": "#0066CC", "fill-opacity": 1 }],
+  "r1": 8, "r2": 8, "r3": 8, "r4": 8,
+  "applied-tokens": {
+    "fill": "color.primary",
+    "r1": "border-radius.card",
+    "r2": "border-radius.card",
+    "r3": "border-radius.card",
+    "r4": "border-radius.card"
+  }
+}
+```
+
+When a token value changes, Penpot walks every shape in the file that has that token in `applied-tokens` and updates the corresponding shape attribute.
+
+### Token-to-attribute mapping
+
+The relationship between token attributes and shape attributes is explicit in the data model:
+
+| Token attribute | Shape attribute updated |
+|---|---|
+| `fill` | `fills` (fill color) |
+| `stroke-color` | `strokes` (stroke color) |
+| `stroke-width` | `strokes` (stroke width) |
+| `stroke-width-top/right/bottom/left` | Per-side stroke widths (rect and frame only) |
+| `width`, `height` | Geometry `width` / `height` |
+| `p1`–`p4` | `layout-padding` |
+| `row-gap`, `column-gap` | `layout-gap` |
+| `m1`–`m4` | `layout-item-margin` |
+| `r1`–`r4` | Corner radii |
+| `opacity` | `opacity` |
+| `font-size` | Text font size |
+| `font-family` | Text font family |
+| `font-weight` | Text font weight |
+
+## Shared token libraries
+
+Design tokens live inside a Penpot file. When you mark a file as a **shared library** (File → Share as library), all of its token sets and themes become available to every file in the same team that links to it. This is the recommended way to distribute a design system's tokens across many product files.
+
+<Note>
+  Library tokens are **read-only** in consumer files. To edit them, open the library source file. Changes propagate to all linked files automatically the next time they are opened.
+</Note>
+
+## W3C Design Tokens compatibility
+
+Penpot's internal token model is designed to be compatible with the [W3C DTCG format](https://design-tokens.github.io/community-group/format/). The type mapping table is bidirectional: when you import a DTCG-formatted JSON file, Penpot translates DTCG type strings (e.g. `"borderRadius"`, `"fontSizes"`) to internal Penpot keywords (`:border-radius`, `:font-size`). When you export, the reverse transformation applies.
+
+This means design tokens can be:
+
+- **Imported** from Style Dictionary, Theo, or any W3C-compliant token tool.
+- **Exported** for consumption by CSS-in-JS libraries, Tailwind config generators, or native mobile token consumers.
+
+```json
+// W3C DTCG format (import / export)
+{
+  "color": {
+    "primary": {
+      "$type": "color",
+      "$value": "#0066CC"
+    }
+  },
+  "borderRadius": {
+    "card": {
+      "$type": "borderRadius",
+      "$value": "8"
+    }
+  }
+}
+```
+
+<Tip>
+  Use the **MCP server** or the **Penpot API** to automate token synchronisation between your design files and your code repository's token JSON files. This enables a true single source of truth where token changes in Penpot automatically open pull requests in your codebase.
+</Tip>

@@ -1,0 +1,248 @@
+---
+title: "Penpot Frontend: ClojureScript SPA Architecture"
+sidebarTitle: "Frontend"
+description: "Understand Penpot's ClojureScript frontend: shadow-cljs build, React via rumext, potok event loop state management, key namespaces, and Playwright testing."
+---
+
+Penpot's frontend is a ClojureScript single-page application that uses React (wrapped by the [rumext](https://github.com/funcool/rumext) library) for rendering and [potok](https://funcool.github.io/potok/latest/) for state management. All source code lives under `frontend/src/app/`.
+
+## Directory Layout
+
+```text
+frontend/src/app/
+├── main/           # Main SPA: UI components + data events
+│   └── ui/
+│       ├── auth/         # Login, register, password recovery
+│       ├── dashboard/    # Projects, files, teams
+│       ├── workspace/    # Design editor
+│       ├── viewer/       # View and inspect mode
+│       ├── render/       # Headless render (used for exports)
+│       ├── shapes/       # SVG shape renderers
+│       └── components/   # Generic UI widget library
+├── worker/         # Web Worker code
+└── util/           # Generic utilities (no UI dependency)
+```
+
+## Build System: shadow-cljs
+
+The frontend uses [shadow-cljs](https://shadow-cljs.github.io/) for compilation and hot reloading. There are three build targets:
+
+| Target | Description |
+|---|---|
+| `:main` | The browser SPA |
+| `:worker` | The Web Worker bundle |
+| `:exporter` | The Node.js exporter (separate service) |
+
+During development the shadow-cljs watch process runs in tmux window 1 and automatically recompiles on file change.
+
+```bash
+# Open a ClojureScript REPL against the running app
+cd penpot/frontend
+npx shadow-cljs cljs-repl main
+```
+
+<Note>
+The REPL requires an active browser session with Penpot open. Without it you get `No application has connected to the REPL server.`
+</Note>
+
+You can also connect from your IDE via nREPL on port `3447`, then call `(shadow/repl :main)` to attach to the browser.
+
+## State Management
+
+Penpot's state management follows an event-loop pattern similar to Redux. The global state is a single Clojure atom; all mutations happen through **events** dispatched to a stream.
+
+### Core modules
+
+- **`app.main.store`** — holds the global state atom and the event loop. Use `st/emit!` to dispatch an event.
+- **`app.main.refs`** — a collection of [RxJS](https://rxjs.dev/)-style lenses over the state. Subscribe to a ref to receive updates when a slice of the state changes.
+- **`app.main.streams`** — derived event streams for keyboard and mouse input, used mainly in the workspace viewport.
+- **`app.main.repo`** — functions that call the backend RPC API. Returns a core.async channel or an observable.
+- **`app.main.errors`** — global error handlers for exceptions in UI components and data events.
+
+### Writing an event
+
+Events are defined with `ptk/reify`. An event can implement `ptk/UpdateEvent` (synchronous state transform), `ptk/WatchEvent` (returns an observable of further events), or `ptk/EffectEvent` (side effects).
+
+```clojure
+(defn set-zoom
+  [zoom]
+  (ptk/reify ::set-zoom
+    ptk/UpdateEvent
+    (update [_ state]
+      (assoc-in state [:workspace-local :zoom] zoom))))
+```
+
+## Namespace Guide
+
+### UI namespaces (`app.main.ui.*`)
+
+| Namespace | Role |
+|---|---|
+| `ui` | Root component, reads the URL and mounts the correct page |
+| `ui.auth` | Login, registration, password recovery screens |
+| `ui.settings` | User profile and settings |
+| `ui.dashboard` | Dashboard: teams, projects, file grid |
+| `ui.workspace` | Design editor and all its panels |
+| `ui.viewer` | View-only and inspect mode |
+| `ui.render` | Headless renderer used during file export |
+| `ui.shapes` | Base SVG rendering components for each shape type |
+| `ui.components` | Reusable UI widgets (inputs, selects, buttons, …) |
+
+### Data namespaces (`app.main.data.*`)
+
+| Namespace | Role |
+|---|---|
+| `data.users` | Login/logout, fetch and update user profile |
+| `data.dashboard` | Teams, projects, file CRUD |
+| `data.workspace` | All workspace edit operations |
+| `data.viewer` | Fetch file for view mode, manage interactive behavior |
+| `data.comments` | Design comment threads |
+| `data.fonts` | Manage custom uploaded fonts |
+| `data.modal` | Show/hide modal dialogs |
+| `data.messages` | Non-modal notification banners |
+| `data.shortcuts` | Keyboard shortcut setup utilities |
+
+## Web Worker
+
+Expensive operations run in a Web Worker (`app.worker`) to keep the UI thread responsive.
+
+| Worker module | Role |
+|---|---|
+| `worker.thumbnails` | Generate file thumbnails shown in the dashboard |
+| `worker.snaps` | Maintain a distance index for snap-to-shape while drawing |
+| `worker.selection` | Maintain a geometric index for hit-testing under the cursor |
+| `worker.impl` | Update all indexes for the current page in one pass |
+| `worker.import` | Import a `.penpot` archive into a file data structure |
+| `worker.export` | Export a file to a `.penpot` archive |
+
+## Debugging
+
+### Browser console access
+
+The `app.main` namespace is exported to JavaScript, so you can call ClojureScript functions directly from the DevTools console:
+
+```javascript
+// Emit an event from the console
+app.main.store.emit_BANG_(app.main.data.workspace.reset_zoom);
+```
+
+### debug namespace
+
+`frontend/src/debug.cljs` exposes a `debug` object with helpers:
+
+```javascript
+debug.dump_state();          // print the whole global state
+debug.dump_objects();        // print all shapes on the current page
+debug.dump_selected();       // print the currently selected shapes
+debug.dump_tree(true, true); // print the layer tree with ids and touched state
+debug.set_logging("app.main.data.workspace", "debug"); // change log level live
+```
+
+### Visual debug mode
+
+```javascript
+debug.toggle_debug("bounding-boxes"); // show bounding box overlays
+debug.toggle_debug("group");          // visualize group regions
+debug.toggle_debug("events");         // log pointer events
+debug.toggle_debug("rotation-handler"); // show rotation handle geometry
+debug.debug_all();   // enable all overlays
+debug.debug_none();  // disable all overlays
+```
+
+### Inserting breakpoints
+
+```clojure
+(js-debugger)   ;; inserts a JS debugger statement; source maps work
+```
+
+## Translations (i18n)
+
+Translation strings are stored in `frontend/translations/*.po` (gettext format). They are bundled into `index.html` at compile time.
+
+```clojure
+(require [app.util.i18n :as i18n :refer [tr]])
+
+(tr "auth.create-demo-account")
+;; => "Create demo account"
+
+;; With variable substitution
+(tr "notifications.validation-email-sent" email)
+
+;; With plurals
+(tr "labels.num-of-projects" (i18n/c 10))
+;; => "10 projects"
+```
+
+After editing `.po` files, reformat them with:
+
+```bash
+# inside frontend/
+pnpm run translations
+```
+
+Hot reload does not apply to translation strings — refresh the browser tab after changes.
+
+<Info>
+English and Spanish `.po` files are maintained manually by the Penpot core team. All other languages are managed on [Weblate](https://weblate.org). To enable a new locale, add it to `app.util.i18n/supported-locales` and `gulpfile.js`.
+</Info>
+
+## Integration Tests
+
+Penpot uses [Playwright](https://playwright.dev/) for browser-level integration tests. There is no real backend — all HTTP and WebSocket calls are intercepted and mocked with fixture JSON files.
+
+### Running tests
+
+```bash
+# Headless (inside the devenv)
+cd penpot/frontend
+pnpm run test:e2e
+
+# With parallelism
+pnpm run test:e2e --workers 4
+
+# Interactive UI (on the host machine, not in the container)
+cd <repo>/frontend
+npx playwright test --ui
+```
+
+<Warning>
+Run `npx playwright install --with-deps` on the host machine if Playwright's browsers are not installed.
+</Warning>
+
+### Page Object Model
+
+Tests use the Page Object Model (POM) pattern. Base classes provide mock utilities:
+
+- **`BasePage`** — `mockRPC(path, fixtureFile)` intercepts any `/api/rpc/command/<path>` call and returns the fixture JSON.
+- **`BaseWebSocketPage`** — also intercepts WebSocket connections. Required for any test that opens the workspace.
+
+```javascript
+export class WorkspacePage extends BaseWebSocketPage {
+  static async init(page) {
+    await BaseWebSocketPage.init(page);
+    // set up mocks …
+  }
+
+  async goToWorkspace() {
+    // navigates and waits for /ws/notifications to be ready
+    this.#ws = await this.waitForNotificationsWebSocket();
+    await this.#ws.mockOpen();
+  }
+}
+```
+
+### Locator priority
+
+Follow this priority order when selecting elements in tests:
+
+1. `page.getByRole` — preferred; uses the accessibility tree.
+2. `page.getByLabel` — for form inputs.
+3. `page.getByPlaceholder` — when the placeholder is more useful than the label.
+4. `page.getByText` — for elements with no role.
+5. `page.getByTestId` — last resort, uses `data-testid`.
+
+### Naming conventions
+
+- Name tests from the user's perspective: `"User logs in successfully"`.
+- Start with an action verb: `"Adds a new file to the project"`.
+- Keep names concise and descriptive.

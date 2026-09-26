@@ -1,0 +1,181 @@
+---
+title: "Components and Variants for Scalable Design Systems"
+sidebarTitle: "Components"
+description: "Build scalable design systems in Penpot with reusable main components, instances, variants, and shared libraries that sync across files."
+---
+
+Components are the foundation of a scalable design system in Penpot. A **component** defines a reusable UI element — a button, a card, an input field — in one place, and every **instance** placed elsewhere on the canvas inherits and tracks that definition. When the main component changes, all instances update automatically. Variants extend this model by grouping related component states (hover, disabled, sizes) into a single, searchable set.
+
+## Main components vs instances
+
+Every component has exactly one **main component** — the source of truth — and any number of **instances** (copies). The data model distinguishes them through shape attributes:
+
+| Attribute | Main component shape | Instance shape |
+|---|---|---|
+| `main-instance` | `true` | absent |
+| `component-id` | own UUID | UUID of the main component |
+| `component-file` | own file UUID | UUID of the file that owns the component |
+| `component-root` | absent | `true` (on the root instance shape) |
+| `shape-ref` | absent | UUID of the corresponding main shape |
+
+A main component lives on a page in the file — usually on a dedicated "Components" page. The component record stored in the file's library (`files/{file-id}/components/{component-id}.json`) points back to that page and shape via `main-instance-page` and `main-instance-id`.
+
+<Note>
+  When you move a main component to a different page, the library component record is updated automatically. Instances remain linked.
+</Note>
+
+## Creating a component
+
+<Steps>
+  <Step title="Design the element">
+    Place and style any shape or group of shapes on the canvas. This becomes the initial main component design.
+  </Step>
+  <Step title="Create the component">
+    Select the shapes, then right-click → **Create component** (or press `Ctrl+K` / `Cmd+K`). Penpot wraps the selection in a frame, registers it as a component, and marks it as the main instance.
+  </Step>
+  <Step title="Name and organise">
+    Double-click the component name in the Assets panel to rename it. Use forward-slash path syntax to group it: `Button/Primary/Default` creates a nested group structure in the assets panel.
+  </Step>
+  <Step title="Place instances">
+    Drag the component from the **Assets panel → Components** tab onto the canvas. Each drag creates a new instance linked to the main.
+  </Step>
+</Steps>
+
+## Instance overrides and touched groups
+
+When you change a property on an instance — say you edit the text inside a button label — that property is no longer synchronised with the main component. Penpot records this as a **touched group**. The shape's `touched` attribute holds a set of group keywords:
+
+```clojure
+;; Shape inside an instance with overridden text and fill
+{:id       "instance-child-uuid"
+ :type     :text
+ :content  {:type "root" ...}  ;; overridden
+ :fills    [{:fill-color "#FF0000"}]  ;; overridden
+ :shape-ref "main-child-uuid"
+ :touched  #{:content-group :fill-group}}
+```
+
+Each shape attribute belongs to a sync group. When a group is touched, further changes to that group in the main component are **not propagated** to that specific instance — all other groups continue to sync normally. The full mapping of attributes to sync groups is:
+
+<Accordion title="Sync group reference">
+
+| Attribute | Sync group |
+|---|---|
+| `name` | `:name-group` |
+| `fills` | `:fill-group` |
+| `hidden` | `:visibility-group` |
+| `strokes` | `:stroke-group` |
+| `shadow` | `:shadow-group` |
+| `blur` | `:blur-group` |
+| `opacity`, `blend-mode` | `:layer-effects-group` |
+| `r1`–`r4` | `:radius-group` |
+| `selrect`, `width`, `height`, `x`, `y`, `rotation`, `transform` | `:geometry-group` |
+| `constraints-h`, `constraints-v` | `:constraints-group` |
+| `font-family`, `font-size`, `font-style`, `font-weight`, `grow-type` | `:text-font-group` |
+| `letter-spacing`, `line-height`, `text-align` | `:text-display-group` |
+| `content` (text shapes) | `:content-group` |
+| `layout` | `:layout-container` |
+| `layout-gap`, `layout-gap-type` | `:layout-gap` |
+| `layout-padding`, `layout-padding-type` | `:layout-padding` |
+| `layout-item-margin` | `:layout-item-margin` |
+
+</Accordion>
+
+### Resetting overrides
+
+Right-click an instance → **Reset overrides** to remove all touched groups and re-sync all attributes with the main component. You can also reset a specific group by right-clicking and choosing **Reset [group name]**.
+
+## Detaching an instance
+
+**Detach component** (right-click → Detach component) severs all links between an instance and its main component. The shape attributes `component-id`, `component-file`, `component-root`, `shape-ref`, and `touched` are all removed. The result is an independent frame that no longer receives updates.
+
+```clojure
+;; Before detach
+{:id "abc" :component-id "def" :component-file "ghi" :component-root true :shape-ref "xyz"}
+
+;; After detach — plain frame, no component links
+{:id "abc" :type :frame :name "Button/Primary/Default"}
+```
+
+## Swapping components
+
+You can replace one component instance with another using **Swap component**. Right-click an instance → **Swap component** and select a different component from the picker. Penpot preserves a set of layout-related attributes across the swap (defined in `swap-keep-attrs`):
+
+- `layout-item-margin` and `layout-item-margin-type`
+- `layout-item-h-sizing` and `layout-item-v-sizing`
+- `layout-item-max-h`, `layout-item-min-h`, `layout-item-max-w`, `layout-item-min-w`
+- `layout-item-absolute`, `layout-item-z-index`, `layout-item-align-self`
+- `interactions`
+
+This lets you swap a button variant within a flex container without losing its size and spacing constraints.
+
+The swap slot mechanism stores the swap as a special `:swap-slot-<uuid>` touched group so that subsequent main-component syncs know not to revert the swap.
+
+## Variants
+
+**Variants** group multiple related components into a single searchable asset — for example all states of a Button component: `Primary/Default`, `Primary/Hover`, `Primary/Disabled`, `Secondary/Default`, etc.
+
+A variant set is represented as:
+- A **variant container** frame (`is-variant-container: true`) that holds all variant component frames visually on the canvas.
+- Each component inside carries a `variant-id` (shared UUID for all variants in the set) and a `variant-properties` array that defines its distinguishing key-value pairs.
+
+```json
+// Component: Button / Primary / Default
+{
+  "id": "component-uuid",
+  "name": "Default",
+  "variant-id": "variant-set-uuid",
+  "variant-properties": [
+    { "name": "Style", "value": "Primary" },
+    { "name": "State", "value": "Default" }
+  ]
+}
+```
+
+### Creating variants
+
+<Steps>
+  <Step title="Create the first component">
+    Design and create a component as normal. This becomes the first variant.
+  </Step>
+  <Step title="Add variants">
+    Right-click the component in the Assets panel → **Add variant**. Penpot places a copy next to the original inside a variant container frame.
+  </Step>
+  <Step title="Set property values">
+    In the Design panel on the right, set each variant's properties (e.g. `Style = Secondary`, `State = Hover`). Values are stored in `variant-properties`.
+  </Step>
+  <Step title="Search and swap">
+    When inserting a component instance, the Assets panel shows a variant picker. Select the desired property combination to place that specific variant.
+  </Step>
+</Steps>
+
+<Tip>
+  Boolean property values (`on`/`off`, `yes`/`no`, `true`/`false`) are detected automatically and rendered as toggle switches in the variant picker, making state toggling one click away.
+</Tip>
+
+## Component libraries
+
+Mark any Penpot file as a **shared library** by going to **File → Shared libraries → Add as shared library**. All components (and their variants) in that file become available to any other file in the same team.
+
+In a consumer file:
+1. Open **File → Shared libraries**.
+2. Toggle on the library file you want to use.
+3. Its components appear in the **Assets → Components** tab under the library name.
+
+Library component instances are visually identical to local instances. Penpot tracks the `component-file` UUID to know which library the component belongs to. If a library file is updated and republished, consumer files are prompted to **update** their linked instances.
+
+<Warning>
+  Library components can only be edited from their source file. In a consumer file, you can override instance properties but cannot alter the main component structure.
+</Warning>
+
+## Naming conventions and developer handoff
+
+Component names map directly to the **code** side of your design system. Follow a naming convention that mirrors your component library:
+
+```
+Button/Primary/Default   →  <Button variant="primary" state="default" />
+Icon/Arrow/Right         →  <Icon name="arrow-right" />
+Input/Text/Error         →  <Input type="text" state="error" />
+```
+
+In [Inspect mode](/features/inspect-mode), an instance shows its component name and all overrides, making it straightforward for a developer to identify which component to use and what props to pass.

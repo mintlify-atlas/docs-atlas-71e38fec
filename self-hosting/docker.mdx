@@ -1,0 +1,287 @@
+---
+title: "Deploy Penpot with Docker Compose"
+sidebarTitle: "Docker"
+description: "Run Penpot on any Linux server with Docker Compose. Covers installation, configuration, HTTPS proxy setup with NGINX/Caddy, updates, backups, and the admin CLI."
+---
+
+Penpot provides an official Docker Compose configuration that bundles every required service — frontend, backend, exporter, MCP server, admin console, PostgreSQL, Valkey, and a local SMTP relay — into a single file. This guide covers everything you need to run a production-quality Penpot instance using Docker, including HTTPS termination, routine updates, data backups, and administrative tasks via the CLI.
+
+<Warning>
+  Installing and maintaining a self-hosted Penpot instance requires familiarity with Docker and Docker Compose, basic DNS management, and reverse proxy configuration. If you'd prefer a managed setup, consider [Elestio](/self-hosting/elestio) or the hosted cloud at [design.penpot.app](https://design.penpot.app).
+</Warning>
+
+## Prerequisites
+
+- **Docker Engine** v20.10 or later — [install guide](https://docs.docker.com/engine/install/)
+- **Docker Compose** v2.x (the `docker compose` plugin) — [install guide](https://docs.docker.com/compose/install/)
+- A server with at least **4 vCPUs**, **16 GB RAM**, and **50–100 GB disk** for a team deployment (see [Recommended Settings](/self-hosting/configuration#recommended-settings))
+
+## Install Docker
+
+Follow the [official Docker documentation](https://docs.docker.com/) for your operating system. Once installed, verify both tools are available:
+
+```bash
+docker --version
+docker compose version
+```
+
+## Get the Compose File
+
+Download the official `docker-compose.yaml` from the Penpot repository:
+
+<CodeGroup>
+  ```bash wget
+  wget https://raw.githubusercontent.com/penpot/penpot/main/docker/images/docker-compose.yaml
+  ```
+
+  ```bash curl
+  curl -o docker-compose.yaml https://raw.githubusercontent.com/penpot/penpot/main/docker/images/docker-compose.yaml
+  ```
+</CodeGroup>
+
+<Tip>
+  Review the downloaded file before starting. It contains inline comments explaining every service, volume, and environment variable.
+</Tip>
+
+## Start Penpot
+
+Launch the full stack in detached mode:
+
+```bash
+docker compose -p penpot -f docker-compose.yaml up -d
+```
+
+On first run, Docker pulls the required images. Once all containers are healthy, Penpot is available at `http://localhost:9001`.
+
+### Pin a Specific Version
+
+By default, the compose file uses the image tag `2.18`. To use a different version, set `PENPOT_VERSION`:
+
+```bash
+PENPOT_VERSION=2.18 docker compose -p penpot -f docker-compose.yaml up -d
+```
+
+<Note>
+  Docker images are published shortly after the SaaS update. It is strongly recommended to update in small increments rather than jumping between distant versions.
+</Note>
+
+## Stop Penpot
+
+```bash
+docker compose -p penpot -f docker-compose.yaml down
+```
+
+This stops and removes the containers but **preserves all volumes** (database and assets).
+
+## Configure Penpot
+
+Configuration is managed through environment variables and feature flags in `docker-compose.yaml`. The file ships with sensible defaults; edit the variables to suit your environment before going to production.
+
+Key variables defined at the top of the compose file as YAML anchors:
+
+```yaml docker-compose.yaml
+x-flags: &penpot-flags
+  PENPOT_FLAGS: disable-email-verification enable-smtp enable-prepl-server disable-secure-session-cookies enable-mcp enable-admin-console
+
+x-uri: &penpot-public-uri
+  PENPOT_PUBLIC_URI: http://localhost:9001
+
+x-secret-key: &penpot-secret-key
+  PENPOT_SECRET_KEY: change-this-insecure-key
+```
+
+<Warning>
+  Replace `change-this-insecure-key` with a strong random secret before exposing Penpot to the internet. Generate one with:
+
+  ```bash
+  python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+  ```
+
+  Also remove the `disable-secure-session-cookies` and `disable-email-verification` flags for production deployments.
+</Warning>
+
+For a full reference of all flags and environment variables, see the [Configuration guide](/self-hosting/configuration).
+
+## Using the CLI for Administrative Tasks
+
+Penpot ships a `manage.py` script for administrative operations. The `enable-prepl-server` flag (set by default in the compose file) must be present for this script to work.
+
+### Create a User
+
+If public registration is disabled, create users with the CLI:
+
+```bash
+docker exec -ti penpot-penpot-backend-1 python3 manage.py create-profile
+```
+
+To skip the onboarding tutorial and walkthrough:
+
+```bash
+docker exec -ti penpot-penpot-backend-1 python3 manage.py create-profile --skip-tutorial --skip-walkthrough
+```
+
+<Note>
+  The exact container name depends on your Docker version and platform. It may be `penpot-penpot-backend-1` or `penpot_penpot-backend-1`. Run `docker ps` to confirm the correct name.
+</Note>
+
+## Update Penpot
+
+Pull the latest images:
+
+```bash
+docker compose -f docker-compose.yaml pull
+```
+
+Then recreate the containers:
+
+```bash
+docker compose -p penpot -f docker-compose.yaml up -d
+```
+
+### Upgrading to 2.18
+
+Version 2.18 introduces the `penpot-admin-console` service. If you maintain a custom compose file, apply these changes manually:
+
+**1. Add `enable-admin-console` to `PENPOT_FLAGS`**
+
+```diff
+- PENPOT_FLAGS: disable-email-verification enable-smtp enable-prepl-server disable-secure-session-cookies enable-mcp
++ PENPOT_FLAGS: disable-email-verification enable-smtp enable-prepl-server disable-secure-session-cookies enable-mcp enable-admin-console
+```
+
+**2. Add the `penpot-admin-console` service**
+
+```yaml docker-compose.yaml
+penpot-admin-console:
+  image: "penpotapp/admin-console:2.18"
+  restart: always
+  depends_on:
+    penpot-postgres:
+      condition: service_healthy
+  networks:
+    - penpot
+  environment:
+    PENPOT_PUBLIC_URI: http://localhost:9001
+    PENPOT_SECRET_KEY: change-this-insecure-key
+    PENPOT_DATABASE_URI: postgresql://penpot-postgres/penpot
+    PENPOT_DATABASE_USERNAME: penpot
+    PENPOT_DATABASE_PASSWORD: penpot
+    PENPOT_INTERNAL_URI: http://penpot-frontend:8080
+```
+
+**3. Update `penpot-frontend`** — add `penpot-admin-console` to `depends_on` and set:
+
+```diff
++    PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000
+```
+
+**4. Update `penpot-backend`** — add the same variable:
+
+```diff
++    PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000
+```
+
+### Upgrading from 1.x to 2.0
+
+The v2 migration runs automatically on startup. For large instances (hundreds of files with extensive SVG components), the process may take several minutes. If the automatic migration encounters an error, you can run it manually after setting the `disable-v2-migration` flag:
+
+```bash
+docker exec -ti <container-name-or-id> ./run.sh app.migrations.v2
+```
+
+## Backup Penpot
+
+Penpot uses [Docker volumes](https://docs.docker.com/storage/volumes/) for all persistent data. The default compose file creates two volumes:
+
+| Volume | Contents |
+|---|---|
+| `penpot_postgres_v15` | PostgreSQL database |
+| `penpot_assets` | User-uploaded files (images, SVG clips) |
+
+Back up volumes using Docker's [volume backup procedure](https://docs.docker.com/storage/volumes/#back-up-restore-or-migrate-data-volumes), which uses a temporary container to archive volume contents. If you use Docker Desktop, the [Volumes Backup & Share extension](https://www.docker.com/blog/back-up-and-share-docker-volumes-with-this-extension/) simplifies this process.
+
+## Configure HTTPS and a Reverse Proxy
+
+Penpot must run behind HTTPS in production. Configure your DNS to point to your server and set up SSL certificates, then proxy `https://<your-domain>` to `http://localhost:9001`.
+
+<Warning>
+  If you serve Penpot over HTTP on a non-localhost domain, you must add `disable-secure-session-cookies` to `PENPOT_FLAGS`. This is **not recommended** for production: some browser APIs (including the clipboard) do not work over plain HTTP.
+</Warning>
+
+### NGINX
+
+```nginx
+server {
+  listen 80;
+  server_name penpot.mycompany.com;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl;
+  server_name penpot.mycompany.com;
+
+  # Sync with PENPOT_HTTP_SERVER_MAX_BODY_SIZE in docker-compose.yaml
+  client_max_body_size 367001600;
+
+  access_log /path/to/penpot.access.log;
+  error_log  /path/to/penpot.error.log;
+
+  ssl_certificate     /path/to/fullchain;
+  ssl_certificate_key /path/to/privkey;
+
+  # WebSocket: notifications
+  location /ws/notifications {
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_pass http://localhost:9001/ws/notifications;
+  }
+
+  # WebSocket: MCP
+  location /mcp/ws {
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_pass http://localhost:9001/mcp/ws;
+  }
+
+  # Proxy pass
+  location / {
+    proxy_set_header Host              $http_host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Scheme          $scheme;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_redirect off;
+    proxy_pass http://localhost:9001/;
+  }
+}
+```
+
+### Caddy
+
+```caddy
+penpot.mycompany.com {
+    reverse_proxy :9001
+    tls /path/to/fullchain.pem /path/to/privkey.pem
+    log {
+        output file /path/to/penpot.log
+    }
+}
+```
+
+### Traefik
+
+The official `docker-compose.yaml` contains a commented-out Traefik service block. Uncomment and configure it with your domain and Let's Encrypt email address. See the [Traefik documentation](https://doc.traefik.io/traefik/) for full details.
+
+## Services Overview
+
+| Service | Image | Description |
+|---|---|---|
+| `penpot-frontend` | `penpotapp/frontend` | Nginx-based web UI, listens on port `9001` |
+| `penpot-backend` | `penpotapp/backend` | API and business logic |
+| `penpot-exporter` | `penpotapp/exporter` | Headless-browser export engine |
+| `penpot-mcp` | `penpotapp/mcp` | MCP server for AI integrations |
+| `penpot-admin-console` | `penpotapp/admin-console` | Admin web interface |
+| `penpot-postgres` | `postgres:15` | Relational database |
+| `penpot-valkey` | `valkey/valkey:8.1` | Cache and WebSocket pub/sub |
+| `penpot-mailpit` | `axllent/mailpit:v1` | Local SMTP relay (dev only) |

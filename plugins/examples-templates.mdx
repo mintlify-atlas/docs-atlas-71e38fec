@@ -1,0 +1,291 @@
+---
+title: "Penpot Plugin Examples, Templates, and Starter Kits"
+sidebarTitle: "Examples"
+description: "Explore Penpot plugin starter templates, framework examples for React/Vue/Angular/Svelte, real sample plugins, and the @penpot/plugin-styles library."
+---
+
+The fastest way to build a Penpot plugin is to start from a working template and study real-world examples. This page collects every official starting point: a vanilla TypeScript starter kit, framework-specific templates, a growing library of focused code samples, and the `@penpot/plugin-styles` package that keeps your UI looking native to Penpot in both light and dark mode.
+
+## Starter Templates
+
+### Official Plugin Starter Template (Vanilla TypeScript)
+
+The [penpot-plugin-starter-template](https://github.com/penpot/penpot-plugin-starter-template) is the recommended starting point for any new plugin. It ships with:
+
+- A minimal `manifest.json` pre-configured for local development
+- A `plugin.ts` entry point wired to the Penpot API
+- Vite as the build tool with HMR during development
+- TypeScript types from `@penpot/plugin-types`
+
+```bash
+# Clone and install
+git clone https://github.com/penpot/penpot-plugin-starter-template my-plugin
+cd my-plugin
+npm install
+npm run dev
+```
+
+After running `npm run dev`, open the Plugin Manager in your Penpot workspace and enter:
+
+```
+http://localhost:4400/assets/manifest.json
+```
+
+<Tip>
+  The starter template includes `@penpot/plugin-styles` out of the box. Import the CSS once and your plugin UI automatically inherits Penpot's colors, typography, and dark/light theme tokens.
+</Tip>
+
+### Framework Starter Templates
+
+If you prefer a component-based framework, the [plugin-examples](https://github.com/penpot/plugin-examples) repository contains ready-to-use templates for the four most popular options:
+
+<CardGroup cols={2}>
+  <Card title="Angular" icon="angular" href="https://github.com/penpot/plugin-examples/tree/main/angular-example">
+    Angular standalone components, Angular CLI build, and `@penpot/plugin-types` integrated out of the box.
+  </Card>
+  <Card title="React" icon="react" href="https://github.com/penpot/plugin-examples/tree/main/react-example">
+    Vite + React + TypeScript. The smallest possible setup for a React-powered plugin panel.
+  </Card>
+  <Card title="Vue" icon="vuejs" href="https://github.com/penpot/plugin-examples/tree/main/vue-example">
+    Vite + Vue 3 + TypeScript with single-file components and full hot-reload during development.
+  </Card>
+  <Card title="Svelte" icon="code" href="https://github.com/penpot/plugin-examples">
+    Lightweight Svelte setup via Vite for developers who prefer minimal boilerplate.
+  </Card>
+</CardGroup>
+
+All framework templates follow the same convention: run `npm install && npm run dev`, then point the Plugin Manager at `http://localhost:<port>/assets/manifest.json`.
+
+---
+
+## Code Examples
+
+The [penpot-plugins-samples](https://github.com/penpot/penpot-plugins-samples) repository contains a focused example for each common plugin use-case. Browse the full list or jump directly to the one you need.
+
+### Shapes and Layout
+
+<CardGroup cols={2}>
+  <Card title="Create a Shape" href="https://github.com/penpot/penpot-plugins-samples/tree/main/create-shape">
+    Create rectangles, ellipses, paths, and boards from the API. A great first exercise to understand how shapes are added to the current page.
+  </Card>
+  <Card title="Create a Text" href="https://github.com/penpot/penpot-plugins-samples/tree/main/create-text">
+    Insert text elements and apply per-segment styles — font, size, color, weight — including mixed styles within a single text node.
+  </Card>
+  <Card title="Group and Ungroup Shapes" href="https://github.com/penpot/penpot-plugins-samples/tree/main/group-ungroup">
+    Combine multiple shapes into a group and split them back. Demonstrates layer hierarchy management.
+  </Card>
+  <Card title="Create Flex Layout" href="https://github.com/penpot/penpot-plugins-samples/tree/main/create-flexlayout">
+    Add auto-layout (Flex) to a board via `board.addFlexLayout()`, set alignment, gaps, and padding, then watch children adapt automatically.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="Create Grid Layout" href="https://github.com/penpot/penpot-plugins-samples/tree/main/create-gridlayout">
+    Build a CSS Grid layout with `board.addGridLayout()`, add rows and columns, and assign shapes to cells.
+  </Card>
+  <Card title="Add Ruler Guides" href="https://github.com/penpot/penpot-plugins-samples/tree/main/create-ruler-guides">
+    Programmatically add horizontal and vertical ruler guides to pages and boards for precise alignment.
+  </Card>
+  <Card title="Interactive Prototype" href="https://github.com/penpot/penpot-plugins-samples/tree/main/create-interactive-prototype">
+    Wire up frames with interactions and flows using `createFlow` and `addInteraction` to build navigable prototypes.
+  </Card>
+  <Card title="Create a Comment" href="https://github.com/penpot/penpot-plugins-samples/tree/main/create-comments">
+    Attach contextual comments to design elements programmatically. Requires the `comment:write` permission in your manifest.
+  </Card>
+</CardGroup>
+
+### Assets and Libraries
+
+<CardGroup cols={2}>
+  <Card title="Create a Component" href="https://github.com/penpot/penpot-plugins-samples/tree/main/components-library">
+    Create reusable library components from shapes using `penpot.library.local.createComponent()`. Requires the `library:write` permission.
+  </Card>
+  <Card title="Create a Colors Library" href="https://github.com/penpot/penpot-plugins-samples/tree/main/colors-library">
+    Add colors (or swap in `createTypography`) to the local library so they're instantly available in the design panel. Requires `library:write`.
+  </Card>
+</CardGroup>
+
+```js
+// Add a color to the local library
+penpot.library.local.createColor();
+
+// Swap for typography:
+penpot.library.local.createTypography();
+```
+
+<Note>
+  Both `createComponent` and `createColor` / `createTypography` require the `library:write` permission declared in `manifest.json`.
+</Note>
+
+### UI and Theming
+
+<CardGroup cols={2}>
+  <Card title="Theme Support" href="https://github.com/penpot/penpot-plugins-samples/tree/main/theme">
+    Listen to `themechange` events and apply dark/light CSS classes. The `@penpot/plugin-styles` library handles most of this automatically.
+  </Card>
+  <Card title="Third-Party API" href="https://github.com/penpot/penpot-plugins-samples/tree/main/third-party-api">
+    Use the Picsum Photos API as a reference for integrating any external HTTP service or third-party library into your plugin.
+  </Card>
+</CardGroup>
+
+---
+
+## No-UI Plugin: Create Palette (Full Example)
+
+Not every plugin needs a user interface. A plugin can run silently, do its work, and call `penpot.closePlugin()` when done. The **Create Palette** plugin — one of the plugins shipped with Penpot itself — is the canonical example.
+
+You can install it right now by pasting this URL into the Plugin Manager:
+
+```
+https://create-palette.plugins.penpot.app/assets/manifest.json
+```
+
+Its `manifest.json` is minimal — no `ui` field, just a code entry point and the permissions it needs:
+
+```json
+{
+  "name": "Create Palette from library",
+  "description": "Create a board with all the colors in the local library",
+  "code": "/plugin.js",
+  "icon": "/assets/icon.png",
+  "permissions": ["content:read", "content:write", "library:read"]
+}
+```
+
+And the entire `plugin.ts` reads the local color library and lays out a palette grid without ever opening a modal window:
+
+```ts
+main();
+
+function main() {
+  createPalette();
+  penpot.closePlugin();
+}
+
+function createPalette() {
+  // Read and sort colors from the local library
+  const colors = penpot.library.local.colors.sort((a, b) =>
+    a.name.toLowerCase() > b.name.toLowerCase() ? 1
+    : a.name.toLowerCase() < b.name.toLowerCase() ? -1
+    : 0
+  );
+
+  const cols = 4;
+  const rows = Math.ceil(colors.length / cols);
+
+  // Create a container board centered in the viewport
+  const board = penpot.createBoard();
+  board.name = 'Palette';
+  board.x = penpot.viewport.center.x - (cols * 200) / 2;
+  board.y = penpot.viewport.center.y - (rows * 100) / 2;
+  board.resize(cols * 200 + (cols - 1) * 10 + 20, rows * 100 + (rows - 1) * 10 + 20);
+  board.borderRadius = 8;
+
+  // Add a grid layout
+  const grid = board.addGridLayout();
+  for (let i = 0; i < rows; i++) grid.addRow('flex', 1);
+  for (let i = 0; i < cols; i++) grid.addColumn('flex', 1);
+  grid.rowGap = 10;
+  grid.columnGap = 10;
+
+  // Place one color swatch per cell
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const color = colors[row * cols + col];
+      if (!color) return;
+
+      const swatch = penpot.createBoard();
+      grid.appendChild(swatch, row + 1, col + 1);
+      swatch.fills = [color.asFill()];
+
+      const label = penpot.createText(color.name);
+      label.fontWeight = 'bold';
+      swatch.appendChild(label);
+    }
+  }
+}
+```
+
+[Browse the full source on GitHub →](https://github.com/penpot/penpot/tree/main/plugins/apps/create-palette-plugin)
+
+---
+
+## Real Plugins Shipping with Penpot
+
+These plugins live in the main Penpot repository and demonstrate production-quality patterns:
+
+| Plugin | Description | Key Permissions |
+|---|---|---|
+| [Create Palette](https://github.com/penpot/penpot/tree/main/plugins/apps/create-palette-plugin) | Generates a color-swatch board from the local library | `content:read`, `content:write`, `library:read` |
+| [Rename Layers](https://github.com/penpot/penpot/tree/main/plugins/apps/rename-layers-plugin) | Batch-rename layers by pattern | `content:read`, `content:write` |
+| [Lorem Ipsum](https://github.com/penpot/penpot/tree/main/plugins/apps/lorem-ipsum-plugin) | Fills text layers with placeholder copy | `content:read`, `content:write` |
+| [Contrast Checker](https://github.com/penpot/penpot/tree/main/plugins/apps/contrast-plugin) | Measures WCAG contrast ratios between layers | `content:read` |
+| [Colors to Tokens](https://github.com/penpot/penpot/tree/main/plugins/apps/colors-to-tokens-plugin) | Exports library colors as a design tokens JSON file | `content:read`, `library:read`, `allow:downloads` |
+| [Icons Plugin](https://github.com/penpot/penpot/tree/main/plugins/apps/icons-plugin) | Inserts Feather icons as vector shapes | `content:read`, `content:write` |
+| [Table Plugin](https://github.com/penpot/penpot/tree/main/plugins/apps/table-plugin) | Creates and imports table structures | `content:read`, `content:write` |
+
+---
+
+## @penpot/plugin-styles
+
+The `@penpot/plugin-styles` package provides a ready-made CSS stylesheet that mirrors Penpot's own design system — colors, typography, form controls, buttons, and more — so your plugin UI feels native rather than foreign. It also handles dark/light theming automatically by adapting to the `data-theme` attribute that Penpot injects into the plugin iframe.
+
+### Installation
+
+```bash
+npm install @penpot/plugin-styles
+```
+
+### Usage
+
+Import the stylesheet once at the top of your CSS (or inside a framework entry file):
+
+```css
+@import '@penpot/plugin-styles/styles.css';
+```
+
+For framework projects, you can import it from JavaScript instead:
+
+```ts
+import '@penpot/plugin-styles/styles.css';
+```
+
+### What You Get
+
+- **CSS custom properties** for all Penpot brand colors, mapped to dark and light values
+- **Utility classes** for typography, spacing, and flex layouts consistent with the Penpot interface
+- **Form element styles** — inputs, selects, checkboxes, toggles — styled to match the design panel
+- **Automatic theming** — wrapping your markup in the container Penpot provides is enough; no JavaScript theme-detection code needed
+
+```html
+<!-- Example plugin panel using plugin-styles classes -->
+<div class="plugin-panel">
+  <h2 class="title-m">My Plugin</h2>
+  <label class="label">Layer name</label>
+  <input class="input" type="text" placeholder="Enter name…" />
+  <button class="button button-primary">Apply</button>
+</div>
+```
+
+<Tip>
+  The `@penpot/plugin-styles` library is not required, but it is strongly recommended. Without it you will need to implement your own dark/light color switching and risk your plugin looking out of place in the Penpot UI.
+</Tip>
+
+For a live demo of every available component, visit the [Penpot Plugin Styles documentation](https://styles-doc.plugins.penpot.app).
+
+For icons, Penpot's own UI uses **Feather Icons** — using the same set in your plugin keeps the visual language consistent. Browse available icons at [feathericons.com](https://feathericons.com).
+
+---
+
+## PenpotHub Plugin Directory
+
+[PenpotHub](https://penpot.app/penpothub/plugins) is the community catalog where plugins, templates, and libraries built by the Penpot community are listed. Once your plugin is deployed and stable, submit it to PenpotHub so other users can discover and install it with a single click.
+
+<CardGroup cols={2}>
+  <Card title="Browse PenpotHub Plugins" icon="grid-2x2" href="https://penpot.app/penpothub/plugins">
+    Explore community-built plugins you can install in your Penpot workspace right now.
+  </Card>
+  <Card title="Submit Your Plugin" icon="upload" href="https://penpot.app/penpothub/plugins/create-plugin">
+    Fill out the submission form to list your plugin in the public catalog.
+  </Card>
+</CardGroup>

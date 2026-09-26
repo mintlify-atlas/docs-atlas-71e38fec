@@ -1,7 +1,7 @@
 ---
 title: "Connect AI Agents to Penpot with the MCP Server"
 sidebarTitle: "MCP Server"
-description: "Set up the Penpot MCP server to let AI agents read, modify, and export your Penpot designs using natural language prompts."
+description: "Set up the Penpot MCP server to connect AI agents to your design files. Read, modify, and export Penpot designs using natural language prompts."
 ---
 
 The Penpot MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/) to connect any MCP-compatible AI client — Cursor, Claude Code, Claude Desktop, and similar tools — directly to your open Penpot design files. Once connected, an agent can read file structure, create and rename layers, apply tokens, export assets, and generate HTML/CSS, all in response to plain-language prompts.
@@ -325,8 +325,15 @@ For additional help, open an issue on [GitHub](https://github.com/penpot/penpot/
   | `PENPOT_MCP_SERVER_HOST` | Address the MCP server listens on | `localhost` |
   | `PENPOT_MCP_SERVER_PORT` | Port for the MCP Streamable HTTP endpoint | `4401` |
   | `PENPOT_MCP_WEBSOCKET_PORT` | Port for the WebSocket server (plugin connection) | `4402` |
+  | `PENPOT_MCP_REPL_PORT` | Port for the REPL server (development/debugging) | `4403` |
+  | `PENPOT_MCP_REPL_HOST` | Address the REPL server listens on | `localhost` |
+  | `PENPOT_MCP_REPL_ENABLE` | Explicitly enable the REPL server (`true` to enable; defaults to `PENPOT_MCP_DEVENV`) | (unset) |
   | `PENPOT_MCP_REMOTE_MODE` | Enable remote mode (disables local file system access) | `false` |
+  | `PENPOT_MCP_DEVENV` | Enable Penpot development environment tools in local single-user mode | `false` |
   | `PENPOT_MCP_TOOL_TIMEOUT_S` | Timeout in seconds for tool calls dispatched to the plugin | `120` |
+  | `PENPOT_MCP_EXPORT_SHAPE_MAX_PARALLEL_REQUESTS` | Maximum parallel `export_shape` requests (multi-user mode only; `0` means no limit) | `0` |
+  | `PENPOT_MCP_REDIS_URI` | Redis connection URI for multi-instance horizontal scaling via pub/sub task routing (multi-user mode only) | (unset) |
   | `PENPOT_MCP_LOG_LEVEL` | Log level: `trace`, `debug`, `info`, `warn`, `error` | `info` |
   | `PENPOT_MCP_LOG_DIR` | Directory for log files; file logging only active when set | (unset) |
+  | `PENPOT_MCP_PLUGIN_SERVER_HOST` | Address the plugin web server listens on (single address or comma-separated list; local mode only) | (unset) |
 </Accordion>

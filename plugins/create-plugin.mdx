@@ -1,5 +1,5 @@
 ---
-title: "Create a Penpot Plugin from Scratch"
+title: "Build a Penpot Plugin from Scratch: Step-by-Step Guide"
 sidebarTitle: "Create Plugin"
 description: "Step-by-step guide to building a Penpot plugin from scratch with Angular, React, Vue, or Svelte — from project setup to loading in the workspace."
 ---
@@ -444,7 +444,7 @@ Use any of these methods inside the Penpot workspace:
 
 Paste the manifest URL into the input field:
 
-```
+```text
 http://localhost:PORT/manifest.json
 ```
 
@@ -459,7 +459,7 @@ Click your plugin's name or icon in the Plugin Manager to launch it. The plugin 
 <Warning>
   If the Plugin Manager refuses to load your manifest, check the browser console for CORS errors. Add the following `_headers` file to your `public/` directory to allow cross-origin requests:
 
-  ```
+  ```text
   /*
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Methods: GET, POST, OPTIONS
@@ -554,7 +554,7 @@ npm run build
 
 Once deployed, your manifest URL will look like:
 
-```
+```text
 https://your-domain.com/assets/manifest.json
 ```
 

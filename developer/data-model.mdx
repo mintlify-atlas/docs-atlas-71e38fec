@@ -1,5 +1,5 @@
 ---
-title: "Penpot Data Model: Files, Pages, and Shapes"
+title: "Penpot Data Model: File, Page, and Shape Hierarchy"
 sidebarTitle: "Data Model"
 description: "Deep dive into Penpot's data model: the file→page→shape hierarchy, shape types, data migrations, component references, and design token structures."
 ---
@@ -10,7 +10,7 @@ Penpot's data model is one of its most critical subsystems. Every design lives i
 
 A Penpot **file** is the top-level container. It holds one or more **pages**, and each page holds a flat map of **shapes** keyed by UUID.
 
-```
+```text
 File
 ├── id (uuid)
 ├── name (string)

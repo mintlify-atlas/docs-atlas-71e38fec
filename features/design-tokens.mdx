@@ -33,6 +33,11 @@ Penpot's token engine maps directly to the [W3C Design Tokens Community Group](h
 | `stroke-width` | `borderWidth` | Stroke width (including per-side) |
 | `number` | `number` | Line height, rotation |
 | `rotation` | `rotation` | Shape rotation |
+| `text-case` | `textCase` | Text transform (uppercase, lowercase, etc.) |
+| `text-decoration` | `textDecoration` | Text decoration (underline, strike-through) |
+| `boolean` | `boolean` | Conditional visibility or toggle states |
+| `string` | `string` | Generic string values |
+| `other` | `other` | Catch-all for non-standard token values |
 
 <Info>
   Penpot's token type names match the DTCG specification. During import/export the engine translates between Penpot's internal keyword names (e.g. `:font-size`) and DTCG string names (e.g. `"fontSizes"`) automatically, maintaining backwards compatibility.
@@ -43,53 +48,44 @@ Penpot's token engine maps directly to the [W3C Design Tokens Community Group](h
 Tokens are organised into **sets** — named collections that can represent a brand tier, a platform, or a context (light mode, dark mode, etc.). Multiple sets can be combined into a **theme**, and a file can have many themes with one or more active at a time.
 
 ```json
+// Penpot exports tokens in multi-set DTCG format.
+// Each top-level key (other than $themes / $metadata) is a set name.
 {
-  "sets": {
-    "core": {
-      "id": "uuid-core",
-      "name": "Core",
-      "tokens": {
-        "color": {
-          "primary": {
-            "id": "uuid-primary",
-            "name": "primary",
-            "type": "color",
-            "value": "#0066CC"
-          },
-          "surface": {
-            "id": "uuid-surface",
-            "name": "surface",
-            "type": "color",
-            "value": "#F5F7FA"
-          }
-        },
-        "spacing": {
-          "sm": { "id": "uuid-sm", "name": "sm", "type": "spacing", "value": "8" },
-          "md": { "id": "uuid-md", "name": "md", "type": "spacing", "value": "16" },
-          "lg": { "id": "uuid-lg", "name": "lg", "type": "spacing", "value": "24" }
-        }
-      }
+  "core": {
+    "color": {
+      "primary": { "$type": "color", "$value": "#0066CC" },
+      "surface": { "$type": "color", "$value": "#F5F7FA" }
     },
-    "brand-dark": {
-      "id": "uuid-dark",
-      "name": "Brand Dark",
-      "tokens": {
-        "color": {
-          "primary": {
-            "id": "uuid-primary-dark",
-            "name": "primary",
-            "type": "color",
-            "value": "#4DA6FF"
-          }
-        }
-      }
+    "spacing": {
+      "sm": { "$type": "spacing", "$value": "8" },
+      "md": { "$type": "spacing", "$value": "16" },
+      "lg": { "$type": "spacing", "$value": "24" }
     }
   },
-  "themes": {
-    "light": { "id": "uuid-light", "name": "Light", "sets": ["core"] },
-    "dark":  { "id": "uuid-dark-theme", "name": "Dark", "sets": ["core", "brand-dark"] }
+  "brand-dark": {
+    "color": {
+      "primary": { "$type": "color", "$value": "#4DA6FF" }
+    }
   },
-  "activeThemes": ["light"]
+  "$themes": [
+    {
+      "id": "uuid-light",
+      "name": "Light",
+      "description": "",
+      "selectedTokenSets": { "core": "enabled" }
+    },
+    {
+      "id": "uuid-dark-theme",
+      "name": "Dark",
+      "description": "",
+      "selectedTokenSets": { "core": "enabled", "brand-dark": "enabled" }
+    }
+  ],
+  "$metadata": {
+    "tokenSetOrder": ["core", "brand-dark"],
+    "activeThemes": ["Light"],
+    "activeSets": ["core"]
+  }
 }
 ```
 

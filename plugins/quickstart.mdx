@@ -1,5 +1,5 @@
 ---
-title: "Build Your First Penpot Plugin in 5 Minutes"
+title: "Quickstart: Build Your First Penpot Plugin in Minutes"
 sidebarTitle: "Quickstart"
 description: "Use the official Penpot plugin starter template to scaffold, configure, and load your first plugin into the Penpot workspace in minutes."
 ---
@@ -42,7 +42,7 @@ This installs Vite, TypeScript, and both Penpot npm packages:
 
 After installation the relevant files look like this:
 
-```
+```text
 my-plugin/
 ├── public/
 │   ├── manifest.json      ← plugin metadata Penpot reads at install time
@@ -172,7 +172,7 @@ Open any Penpot project in the workspace and open the **Plugin Manager** using o
 
 In the Plugin Manager dialog, paste the manifest URL:
 
-```
+```text
 http://localhost:4200/manifest.json
 ```
 
@@ -180,7 +180,7 @@ Click **Install**. If everything is set up correctly, the plugin will appear in 
 
 <Warning>
   If you see a CORS error, add an `Access-Control-Allow-Origin: *` header to your development server. With Vite you can add a `_headers` file to the `public/` directory:
-  ```
+  ```text
   /*
     Access-Control-Allow-Origin: *
   ```

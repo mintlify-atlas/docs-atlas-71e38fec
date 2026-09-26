@@ -1,5 +1,5 @@
 ---
-title: "Receive Penpot Events via Webhooks"
+title: "Penpot Webhooks: Receive Real-Time Design Events"
 sidebarTitle: "Webhooks"
 description: "Configure outbound webhooks to receive real-time POST notifications when files, projects, and comments change inside a Penpot team."
 ---
@@ -43,17 +43,16 @@ Penpot sends a `POST` request with the selected `Content-Type` header. The `User
 
 ### JSON payload example
 
-The JSON keys use **camelCase** (converted from Penpot's internal kebab-case). Here is a representative `file-created` payload:
+The JSON keys use **camelCase** (converted from Penpot's internal kebab-case). The `name` field contains the RPC command name that triggered the event. Here is a representative `create-file` payload:
 
 ```json
 {
-  "name": "file-created",
+  "name": "create-file",
   "profileId": "b7a2c1d4-0e3f-4a6b-9c8d-1e2f3a4b5c6d",
-  "fileId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "projectId": "d4e5f6a7-b8c9-0123-def0-123456789abc",
   "teamId": "f1e2d3c4-b5a6-7890-fedc-ba9876543210",
   "createdAt": "2024-06-15T10:23:45.123Z",
-  "name": "Homepage Redesign"
+  "fileName": "Homepage Redesign"
 }
 ```
 
@@ -66,31 +65,46 @@ The JSON keys use **camelCase** (converted from Penpot's internal kebab-case). H
 Every backend RPC command annotated with `::webhooks/event? true` triggers a webhook. The table below lists all events currently fired.
 
 <Accordion title="File events">
-  | Event name | Triggered when |
+  | Event name (`name` field) | Triggered when |
   |---|---|
-  | `file-created` | A new file is created in a project |
-  | `file-updated` | File data is modified (shapes, pages, etc.) |
-  | `file-renamed` | A file is renamed |
-  | `file-deleted` | A file is deleted |
-  | `file-shared` | A file's shared/library status changes via `set-file-shared` |
-  | `file-library-linked` | A file is linked to a shared library |
-  | `file-library-unlinked` | A file is unlinked from a shared library |
+  | `create-file` | A new file is created in a project |
+  | `update-file` | File data is modified (shapes, pages, etc.) |
+  | `rename-file` | A file is renamed |
+  | `delete-file` | A file is deleted |
+  | `set-file-shared` | A file's shared/library status changes |
+  | `link-file-to-library` | A file is linked to a shared library |
+  | `unlink-file-from-library` | A file is unlinked from a shared library |
+  | `duplicate-file` | A file is duplicated |
+  | `move-files` | One or more files are moved to another project |
+  | `export-binfile` | A binary export of a file is triggered |
+  | `import-binfile` | A binary file is imported |
 </Accordion>
 
 <Accordion title="Project events">
-  | Event name | Triggered when |
+  | Event name (`name` field) | Triggered when |
   |---|---|
-  | `project-created` | A new project is created |
-  | `project-renamed` | A project is renamed |
-  | `project-pin-updated` | A project's pinned state changes |
-  | `project-deleted` | A project is deleted |
+  | `create-project` | A new project is created |
+  | `rename-project` | A project is renamed |
+  | `update-project-pin` | A project's pinned state changes |
+  | `delete-project` | A project is deleted |
+  | `duplicate-project` | A project is duplicated |
+  | `move-project` | A project is moved |
 </Accordion>
 
 <Accordion title="Comment events">
-  | Event name | Triggered when |
+  | Event name (`name` field) | Triggered when |
   |---|---|
-  | `comment-thread-created` | A new comment thread is opened on a file |
-  | `comment-created` | A reply is posted inside an existing thread |
+  | `create-comment-thread` | A new comment thread is opened on a file |
+  | `create-comment` | A reply is posted inside an existing thread |
+</Accordion>
+
+<Accordion title="Font events">
+  | Event name (`name` field) | Triggered when |
+  |---|---|
+  | `create-font-variant` | A custom font variant is uploaded |
+  | `update-font` | A font's metadata is updated |
+  | `delete-font` | A font family is deleted |
+  | `delete-font-variant` | A specific font variant is deleted |
 </Accordion>
 
 ## Handling a webhook in your server
@@ -111,11 +125,11 @@ app.post("/penpot-webhook", (req, res) => {
   console.log("Penpot event:", event.name, "| File:", event.fileId);
 
   switch (event.name) {
-    case "file-updated":
+    case "update-file":
       // trigger your asset-sync pipeline
       syncAssets(event.fileId, event.teamId);
       break;
-    case "comment-thread-created":
+    case "create-comment-thread":
       // post a notification to Slack / Teams
       notifyTeam(event.profileId, event.fileId);
       break;
@@ -138,9 +152,9 @@ def penpot_webhook():
 
     print(f"Penpot event: {event.get('name')} | File: {event.get('fileId')}")
 
-    if event.get("name") == "file-updated":
+    if event.get("name") == "update-file":
         sync_assets(event["fileId"], event["teamId"])
-    elif event.get("name") == "comment-thread-created":
+    elif event.get("name") == "create-comment-thread":
         notify_team(event["profileId"], event["fileId"])
 
     return "", 200

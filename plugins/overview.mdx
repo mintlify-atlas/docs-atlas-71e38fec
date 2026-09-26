@@ -1,5 +1,5 @@
 ---
-title: "Penpot Plugin System: Extend the Design Workspace"
+title: "Penpot Plugin System: Architecture and API Overview"
 sidebarTitle: "Overview"
 description: "Learn how the Penpot plugin system works, its iframe-based architecture, the penpot global object, npm packages, and available permissions."
 ---
@@ -10,7 +10,7 @@ Penpot plugins let you extend the design workspace without touching Penpot's cor
 
 Every Penpot plugin is loaded inside a sandboxed **iframe** that appears in a modal panel within the workspace. Penpot creates a lightweight web component that reads your `manifest.json`, sets up a secure sandbox (using [SES — Secure ECMAScript](https://github.com/endojs/endo/tree/master/packages/ses)), exposes the `penpot` global object to your plugin logic, and then renders your UI in an iframe.
 
-```
+```text
 Penpot App
   └── WebComponent (sandbox)
         ├── Runs plugin.ts / plugin.js   ← penpot global is available here

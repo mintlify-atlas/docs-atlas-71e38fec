@@ -1,7 +1,7 @@
 ---
-title: "Penpot Backend: Clojure Services and RPC API"
+title: "Penpot Backend Guide: Clojure Services and RPC API"
 sidebarTitle: "Backend"
-description: "Explore Penpot's Clojure backend: RPC command system, PostgreSQL persistence, Redis pub/sub, REPL-based development, database migrations, and async task workers."
+description: "Explore Penpot's Clojure backend: RPC command system, PostgreSQL persistence, Redis pub/sub, REPL workflow, database migrations, and async task workers."
 ---
 
 The Penpot backend is a Clojure application running on the JVM. It handles all data persistence, file storage, RPC command dispatch, WebSocket notifications, and background maintenance tasks. Source code lives under `backend/src/app/`.
@@ -58,18 +58,20 @@ Every data operation in Penpot is exposed as an RPC command. There are no REST e
 ```clojure
 ;; backend/src/app/rpc/commands/files.clj
 
-(sm/defn get-file
-  {::sm/params [:map
-                [:id ::sm/uuid]
-                [:features {:optional true} [:set :string]]]}
-  [{:keys [pool] :as cfg} {:keys [profile-id id] :as params}]
-  (db/with-atomic [conn pool]
-    (let [file (db/get conn :file {:id id})]
-      (check-read-permissions! conn profile-id id)
-      (decode-file file))))
+(sv/defmethod ::get-file
+  "Retrieve a file by its ID. Only authenticated users."
+  {::doc/added "1.17"
+   ::rpc/id-type :file
+   ::sm/params schema:get-file
+   ::sm/result schema:file-with-permissions
+   ::db/transaction true}
+  [cfg {:keys [::rpc/profile-id id] :as params}]
+  (let [perms (perms/get-file-read-permissions cfg profile-id id)]
+    (check-read-permissions! perms)
+    (get-file cfg id)))
 ```
 
-Commands live under `app.rpc.commands.*`. The `sm/defn` macro registers the function with its param schema and wires it into the HTTP router.
+Commands live under `app.rpc.commands.*`. The `sv/defmethod` macro registers the function, attaches its Malli param/result schemas via metadata, and wires it into the HTTP router.
 
 ### Queries vs mutations
 
@@ -79,7 +81,7 @@ Historically the API distinguished `query` (GET) and `mutation` (POST) endpoints
 
 When a user opens a file, the frontend opens a WebSocket to `/ws/notifications?file-id=<uuid>`.
 
-```
+```text
 Frontend ──── WebSocket ──── Backend notifications.clj
                                    │
                                   Redis
@@ -101,13 +103,13 @@ No row is deleted immediately. Every deletion sets a `deleted_at` timestamp. All
 
 SQL migrations live in `backend/src/app/migrations/sql/` and follow a strict naming convention:
 
-```
+```text
 NNNN-<verb>-<table-name>-<description>
 ```
 
 Examples:
 
-```
+```text
 0025-del-generic-tokens-table
 0026-mod-profile-table-add-is-active-field
 ```

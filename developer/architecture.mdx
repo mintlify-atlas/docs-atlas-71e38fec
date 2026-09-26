@@ -1,7 +1,7 @@
 ---
 title: "Penpot System Architecture: Services and Data Flow"
 sidebarTitle: "Architecture"
-description: "Explore Penpot's system architecture: ClojureScript SPA frontend, Clojure JVM backend, PostgreSQL, Redis pub/sub, exporter, and the shared common library."
+description: "Penpot's system architecture: ClojureScript SPA, Clojure JVM backend, PostgreSQL, Redis/Valkey pub/sub, exporter service, and the shared common library."
 ---
 
 Penpot follows a classic single-page application architecture. A ClojureScript frontend communicates with a Clojure backend over an HTTP RPC API and a persistent WebSocket. Both ends share a common Clojure/ClojureScript library for data structures and business logic, eliminating the need for any cross-language serialization beyond a transit wire encoding.
@@ -15,7 +15,7 @@ Penpot follows a classic single-page application architecture. A ClojureScript f
 | Render WASM | Rust (`render-wasm`) |
 | Exporter | ClojureScript, Node.js, Puppeteer |
 | Database | PostgreSQL |
-| Broker | Redis (pub/sub) |
+| Broker | Redis / Valkey (pub/sub) |
 | Object storage | S3-compatible (RustFS in devenv) |
 
 ## System Components
@@ -39,7 +39,7 @@ The system has four main runtime processes that cooperate to deliver the full pr
 
 ## Communication Patterns
 
-```
+```text
 User
  │  HTTPS
  ▼
@@ -73,9 +73,9 @@ When a user opens a file, the frontend opens a persistent WebSocket to the backe
 - **Presence events**: connect, disconnect, cursor movement.
 - **Change notifications**: edits from other collaborators, dispatched by the backend's notifications module.
 
-### Redis pub/sub
+### Redis / Valkey pub/sub
 
-Backend instances use Redis as a message broker. When a user saves changes to a file, the backend publishes a message to the Redis topic for that file ID. All backend instances subscribed to that topic forward the message to their connected WebSocket clients.
+Backend instances use Redis (or the Redis-compatible [Valkey](https://valkey.io/) fork, which is used in the devenv) as a message broker. When a user saves changes to a file, the backend publishes a message to the topic for that file ID. All backend instances subscribed to that topic forward the message to their connected WebSocket clients.
 
 ## Monorepo Directory Structure
 
@@ -132,7 +132,7 @@ Because `common/` is compiled into both processes, a bug fix or data model chang
 
 Code in `common/` is organized in strict horizontal layers. Higher layers may call lower ones, but never the reverse.
 
-```
+```text
 Data events (frontend only)
         ↓
 Business logic  (common/logic/)

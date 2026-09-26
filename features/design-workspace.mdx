@@ -51,7 +51,10 @@ Penpot supports nine shape types. Every shape shares a common set of base attrib
     The primary container (artboard). Frames can host other frames, groups, and all other shape types. Only frames can have Flex or Grid layout enabled. Frames define the clipping boundary of exported SVG.
   </Card>
   <Card title="Group" icon="object-group">
-    A logical grouping with no visual representation of its own. Groups clip their children to the union bounding box and participate in the layer hierarchy. Boolean operations produce a specialised **bool** shape.
+    A logical grouping with no visual representation of its own. Groups clip their children to the union bounding box and participate in the layer hierarchy.
+  </Card>
+  <Card title="Bool" icon="circle-half-stroke">
+    The result of a boolean operation (union, difference, exclude, intersection) applied to two or more paths. Stores the result as a `content` path and a `bool-type` attribute, plus the source `shapes` list.
   </Card>
   <Card title="Rectangle" icon="square">
     An axis-aligned rectangle with independent corner radii (`r1`–`r4`). Renders as an SVG `<rect>` with optional `rx`/`ry`.
@@ -60,7 +63,7 @@ Penpot supports nine shape types. Every shape shares a common set of base attrib
     Renders as an SVG `<ellipse>`. The visual radius attributes (`rx`, `ry`) are derived from the shape's `width` and `height`.
   </Card>
   <Card title="Path" icon="bezier-curve">
-    A vector path described by SVG path commands stored in the `content` attribute. Used for custom icons, illustrations, and boolean shape results.
+    A vector path described by SVG path commands stored in the `content` attribute. Used for custom icons, illustrations, and freehand drawing.
   </Card>
   <Card title="Text" icon="font">
     A rich-text shape whose content is a nested tree of root → paragraph → text-node objects, each carrying independent font, fill, and decoration attributes.
@@ -68,12 +71,12 @@ Penpot supports nine shape types. Every shape shares a common set of base attrib
   <Card title="Image" icon="image">
     An embedded raster image. The `metadata` attribute carries `width`, `height`, `mtype` (MIME type), and the UUID reference to the stored binary object.
   </Card>
-  <Card title="Component instance" icon="puzzle-piece">
-    Not a separate type — component instances are `frame` shapes that carry `component-id`, `component-file`, and `shape-ref` attributes linking them to a main component definition.
+  <Card title="SVG Raw" icon="code">
+    Preserves raw SVG elements imported from external SVG files, allowing Penpot to round-trip SVG content it does not natively model into another type.
   </Card>
 </CardGroup>
 
-A ninth type, **svg-raw**, preserves raw SVG elements imported from external SVG files, allowing Penpot to round-trip SVG content it does not natively model.
+Component instances are not a separate shape type — they are `frame` shapes that carry `component-id`, `component-file`, and `shape-ref` attributes linking them to a main component definition.
 
 ## Design and Prototype modes
 

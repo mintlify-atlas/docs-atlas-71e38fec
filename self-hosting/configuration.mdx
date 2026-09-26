@@ -1,7 +1,7 @@
 ---
-title: "Configure Your Penpot Instance"
+title: "Penpot Configuration: Flags and Environment Variables"
 sidebarTitle: "Configuration"
-description: "Full reference for Penpot environment variables and feature flags. Covers registration, OAuth providers, SMTP, storage, MCP, CSP, HSTS, and recommended hardware settings."
+description: "Complete reference for Penpot environment variables and feature flags. Covers OAuth, SMTP, S3 storage, CSP, HSTS, and recommended hardware settings."
 ---
 
 Penpot is configured entirely through **environment variables** and **feature flags** — no config files to edit by hand. This guide covers every major configuration area, from initial setup through advanced options like S3 storage, OIDC single sign-on, and Content Security Policy tuning. All examples show real variable names from the Penpot source.
@@ -323,6 +323,74 @@ PENPOT_OBJECTS_STORAGE_S3_ENDPOINT: <endpoint-uri>
   Since version 2.11.0, the storage variable prefix changed from `PENPOT_STORAGE_ASSETS_*` to `PENPOT_OBJECTS_STORAGE_*`, and backend values changed from `assets-fs`/`assets-s3` to `fs`/`s3`.
 </Note>
 
+## File Data Storage Backend
+
+Available since version 2.11.0. Controls where Penpot stores file data (design content and snapshots).
+
+```bash
+# Backend
+PENPOT_FILE_DATA_BACKEND: legacy-db
+```
+
+Available values:
+
+| Value | Description |
+|---|---|
+| `legacy-db` | Default. Stores file data in the same database location as pre-2.11 Penpot. |
+| `db` | Stores file data in a dedicated database table (the future default). |
+| `storage` | Stores file data using the configured object storage backend (S3 or FS). |
+
+To enable tiered storage (inactive files offloaded to object storage, active files kept in the database):
+
+```bash
+# Backend
+PENPOT_FLAGS: [...] enable-tiered-file-data-storage
+PENPOT_FILE_DATA_BACKEND: db
+```
+
+## Autosave
+
+By default, Penpot stores only manually saved versions indefinitely. Automatic versioning is disabled. Enable it with the `enable-auto-file-snapshot` flag:
+
+<Warning>
+  Automatic versioning can significantly increase database size. Monitor storage impact carefully. If you are unsure, leave automatic versioning disabled and use manual versioning.
+</Warning>
+
+```bash
+PENPOT_FLAGS: [...] enable-auto-file-snapshot
+
+# Backend
+PENPOT_AUTO_FILE_SNAPSHOT_EVERY: 5        # Save-operations count that triggers an auto-save
+PENPOT_AUTO_FILE_SNAPSHOT_TIMEOUT: "1h"   # Force a save after this interval even if count is not met
+```
+
+## ImageMagick Resource Limits
+
+Penpot uses ImageMagick for image processing (thumbnail generation, MIME detection, dimension extraction). Configure resource limits to prevent a single operation from consuming unbounded server resources:
+
+```bash
+# Backend
+PENPOT_IMAGEMAGICK_THREAD_LIMIT: 2
+PENPOT_IMAGEMAGICK_MEMORY_LIMIT: 256MiB
+PENPOT_IMAGEMAGICK_MAP_LIMIT: 512MiB
+PENPOT_IMAGEMAGICK_AREA_LIMIT: 128MP
+PENPOT_IMAGEMAGICK_DISK_LIMIT: 1GiB
+PENPOT_IMAGEMAGICK_TIME_LIMIT: 30
+PENPOT_IMAGEMAGICK_WIDTH_LIMIT:
+PENPOT_IMAGEMAGICK_HEIGHT_LIMIT:
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `PENPOT_IMAGEMAGICK_THREAD_LIMIT` | `2` | Max threads per ImageMagick process |
+| `PENPOT_IMAGEMAGICK_MEMORY_LIMIT` | `256MiB` | Max heap memory per process |
+| `PENPOT_IMAGEMAGICK_MAP_LIMIT` | `512MiB` | Max memory-mapped area (disk-backed pixel cache) |
+| `PENPOT_IMAGEMAGICK_AREA_LIMIT` | `128MP` | Max total pixels (128 megapixels ≈ 11584×11096) |
+| `PENPOT_IMAGEMAGICK_DISK_LIMIT` | `1GiB` | Max pixel cache on disk |
+| `PENPOT_IMAGEMAGICK_TIME_LIMIT` | `30` | Max seconds per ImageMagick operation |
+| `PENPOT_IMAGEMAGICK_WIDTH_LIMIT` | *(not set)* | Max width in pixels |
+| `PENPOT_IMAGEMAGICK_HEIGHT_LIMIT` | *(not set)* | Max height in pixels |
+
 ## MCP Server
 
 The MCP (Model Context Protocol) server lets AI agents read and edit Penpot files.
@@ -346,6 +414,17 @@ PENPOT_EXPORTER_URI: http://your-penpot-exporter:6061
 # 127.0.0.11 is the embedded Docker DNS server
 PENPOT_INTERNAL_RESOLVER: 127.0.0.11
 ```
+
+## Exporter
+
+The exporter uses a headless browser to render Penpot files for export. It communicates with the frontend over the internal Docker network:
+
+```bash
+# Exporter
+PENPOT_INTERNAL_URI: http://penpot-frontend:8080
+```
+
+`PENPOT_INTERNAL_URI` is the URL the exporter's headless browser uses to reach the frontend container. It defaults to `PENPOT_PUBLIC_URI` if not set. The value `http://penpot-frontend:8080` used in the official Docker Compose is the recommended default — change it only if your frontend service has a different name or port.
 
 ## Security Headers
 
@@ -371,6 +450,16 @@ To collect CSP violation reports:
 ```bash
 PENPOT_CSP_REPORT_URI: https://csp-reporting.example.com/report
 ```
+
+To replace the entire CSP policy (use with caution — you must re-read and update the hashes on every upgrade):
+
+```bash
+PENPOT_CSP_POLICY: "default-src 'self'; ..."
+```
+
+<Warning>
+  `PENPOT_CSP_POLICY` overrides the full default policy, including the build-time script hashes. If you pin the whole policy, you must recompute those hashes on every Penpot upgrade or the application will fail to load. Prefer the `PENPOT_CSP_*_EXTRA` variables for targeted additions.
+</Warning>
 
 ### HTTP Strict Transport Security
 

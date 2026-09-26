@@ -1,7 +1,7 @@
 ---
 title: "Penpot Plugin Examples, Templates, and Starter Kits"
 sidebarTitle: "Examples"
-description: "Explore Penpot plugin starter templates, framework examples for React/Vue/Angular/Svelte, real sample plugins, and the @penpot/plugin-styles library."
+description: "Explore Penpot plugin starter templates, framework examples for Angular, React, and Vue, real sample plugins, and the @penpot/plugin-styles CSS library."
 ---
 
 The fastest way to build a Penpot plugin is to start from a working template and study real-world examples. This page collects every official starting point: a vanilla TypeScript starter kit, framework-specific templates, a growing library of focused code samples, and the `@penpot/plugin-styles` package that keeps your UI looking native to Penpot in both light and dark mode.
@@ -27,7 +27,7 @@ npm run dev
 
 After running `npm run dev`, open the Plugin Manager in your Penpot workspace and enter:
 
-```
+```text
 http://localhost:4400/assets/manifest.json
 ```
 
@@ -49,8 +49,8 @@ If you prefer a component-based framework, the [plugin-examples](https://github.
   <Card title="Vue" icon="vuejs" href="https://github.com/penpot/plugin-examples/tree/main/vue-example">
     Vite + Vue 3 + TypeScript with single-file components and full hot-reload during development.
   </Card>
-  <Card title="Svelte" icon="code" href="https://github.com/penpot/plugin-examples">
-    Lightweight Svelte setup via Vite for developers who prefer minimal boilerplate.
+  <Card title="Svelte" icon="code" href="https://github.com/penpot/penpot-plugin-starter-template">
+    Bootstrap a Svelte + Vite project with `npm create svelte@latest`, then wire in `@penpot/plugin-types` and a `manifest.json` following the starter template structure.
   </Card>
 </CardGroup>
 
@@ -136,7 +136,7 @@ Not every plugin needs a user interface. A plugin can run silently, do its work,
 
 You can install it right now by pasting this URL into the Plugin Manager:
 
-```
+```text
 https://create-palette.plugins.penpot.app/assets/manifest.json
 ```
 

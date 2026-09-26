@@ -1,7 +1,7 @@
 ---
 title: "Contributing to Penpot: Code, Bugs, and Translations"
 sidebarTitle: "Contributing"
-description: "Learn how to contribute to Penpot: report bugs, submit pull requests, follow commit conventions, add translations, and engage with the community on Discord and GitHub."
+description: "Contribute to Penpot: report bugs, submit pull requests, follow emoji commit conventions, sign the DCO, add translations, and connect with the community."
 ---
 
 Penpot is open source and welcomes contributions from the community. This guide covers how to report bugs, submit code changes, follow the project's conventions, and contribute translations.
@@ -65,7 +65,7 @@ PRs are **squash-merged**, so the branch name does not appear in the commit hist
 
 ### PR and Commit Title Format
 
-```
+```text
 :emoji: Subject line (imperative, capitalized, no period, ≤70 chars)
 ```
 
@@ -87,13 +87,14 @@ PRs are **squash-merged**, so the branch name does not appear in the commit hist
 | 🐳 | `:whale:` | Docker-related change |
 | 📎 | `:paperclip:` | Other non-relevant changes |
 | ⬆️ | `:arrow_up:` | Dependency update |
+| ⬇️ | `:arrow_down:` | Dependency downgrade |
 | 🔥 | `:fire:` | Removal of code or files |
 | 🌐 | `:globe_with_meridians:` | Add or update translations |
 | 🚀 | `:rocket:` | Epic or highlight |
 
 ### Commit Message Rules
 
-```
+```text
 :emoji: Subject line
 
 [Optional body, wrapped at 76 characters.
@@ -117,7 +118,7 @@ Validate your commit message locally:
 
 ### Commit Examples
 
-```
+```text
 :bug: Fix unexpected error on launching modal
 :sparkles: Enable new modal for profile
 :zap: Improve performance of dashboard navigation
@@ -179,7 +180,7 @@ const langs = [..., "your-locale"];
 
 5. Commit with the `:globe_with_meridians:` emoji:
 
-```
+```text
 :globe_with_meridians: Add Turkish translation strings for dashboard
 ```
 

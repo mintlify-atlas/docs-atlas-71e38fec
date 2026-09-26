@@ -1,5 +1,5 @@
 ---
-title: "Real-Time Collaboration on Design Files"
+title: "Real-Time Collaboration: Multiplayer Design in Penpot"
 sidebarTitle: "Collaboration"
 description: "Collaborate live in Penpot with multiplayer editing, presence cursors, threaded comments, teams, projects, and granular role-based permissions."
 ---
@@ -113,18 +113,11 @@ Permissions are inherited from the team level and can be **overridden per projec
 
 Penpot fires outbound **webhooks** when collaboration events occur in a team. Configure webhooks at the team level (**Team settings → Webhooks**) by providing a URL that will receive `POST` requests.
 
-Webhook events include:
+Webhook payloads are delivered as JSON (default) or [Transit+JSON](https://github.com/cognitect/transit-format) for any event that occurs within the team. Events are fired by backend RPC commands — for example, file creation, file update, file deletion, project creation, project deletion, and comment creation. Use webhooks to trigger CI/CD pipelines, design system sync jobs, Slack notifications, or any other automation in your workflow.
 
-| Event | When it fires |
-|---|---|
-| `file:created` | A new file is created in a team project |
-| `file:updated` | A file is saved after editing |
-| `file:deleted` | A file is deleted |
-| `comment:created` | A comment is posted on any file in the team |
-| `project:created` | A new project is created |
-| `project:deleted` | A project is deleted |
-
-Payloads are delivered as JSON (default) or [Transit+JSON](https://github.com/cognitect/transit-format). Use webhooks to trigger CI/CD pipelines, design system sync jobs, Slack notifications, or any other automation in your workflow.
+<Tip>
+  To inspect the exact payload structure for each event, point your webhook URL to [webhook.site](https://webhook.site) and trigger actions in Penpot. The full list of webhook-enabled commands is also documented in the [Penpot API reference](https://design.penpot.app/api/_doc).
+</Tip>
 
 ```bash
 # Example: verify your webhook is receiving events

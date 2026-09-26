@@ -18,7 +18,7 @@ Every component has exactly one **main component** — the source of truth — a
 | `component-root` | absent | `true` (on the root instance shape) |
 | `shape-ref` | absent | UUID of the corresponding main shape |
 
-A main component lives on a page in the file — usually on a dedicated "Components" page. The component record stored in the file's library (`files/{file-id}/components/{component-id}.json`) points back to that page and shape via `main-instance-page` and `main-instance-id`.
+A main component lives on a page in the file — usually on a dedicated "Components" page. The component record stored in the file's shared library points back to that page and shape via `main-instance-page` and `main-instance-id`.
 
 <Note>
   When you move a main component to a different page, the library component record is updated automatically. Instances remain linked.
@@ -120,11 +120,15 @@ A variant set is represented as:
 - Each component inside carries a `variant-id` (shared UUID for all variants in the set) and a `variant-properties` array that defines its distinguishing key-value pairs.
 
 ```json
-// Component: Button / Primary / Default
+// Root shape of a variant component: Button / Primary / Default
+// (variant-id and variant-properties come from the component record;
+//  is-variant-container: true is set only on the wrapper container frame)
 {
-  "id": "component-uuid",
+  "id": "shape-uuid",
+  "type": "frame",
   "name": "Default",
   "variant-id": "variant-set-uuid",
+  "variant-name": "Primary, Default",
   "variant-properties": [
     { "name": "Style", "value": "Primary" },
     { "name": "State", "value": "Default" }
